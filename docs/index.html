@@ -7,153 +7,146 @@
 <meta name="description" content="Paste your Arduino, ESP32 or ESP8266 code and find hard-coded Wi-Fi passwords, API tokens, open OTA updates and insecure TLS. Runs in your browser; nothing is uploaded.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-/* Layout idea: a component datasheet. Code goes in on the left like a part under test,
-   findings come out on the right as a fault log with LED status markers. */
+/* Layout idea: a quiet two-pane bench. Code on the left, findings on the right.
+   One accent (solder-mask green); severity colours only where something needs attention. */
 :root {
-  --paper: #f5f6f2;
-  --panel: #ffffff;
-  --ink: #15211d;
-  --muted: #5c6a64;
-  --line: #d9ded8;
-  --mask: #0e6a57;        /* solder-mask green: the one accent */
-  --mask-soft: #e3efe9;
-  --copper: #a85a1c;      /* pad/trace copper, used for code highlights */
-  --crit: #b4232a; --high: #c9372c; --med: #b7791f; --low: #5a6b78; --ok: #1f8a5b;
-  --code-bg: #f0f2ee;
-  --display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --bg: #fafaf8;
+  --surface: #ffffff;
+  --ink: #17201d;
+  --muted: #68736e;
+  --line: #e6e8e4;
+  --accent: #0e6a57;
+  --accent-soft: #e8f2ee;
+  --crit: #b4232a; --high: #c9372c; --med: #b7791f; --low: #6b7a86; --ok: #1f8a5b;
+  --code-bg: #f4f5f2;
   --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --paper: #0d1714; --panel: #12201c; --ink: #e2ebe6; --muted: #91a39b; --line: #23352f;
-    --mask: #3db596; --mask-soft: #173129; --copper: #e09455;
-    --crit: #ff6b6b; --high: #f2715f; --med: #e8b04a; --low: #93a5b3; --ok: #4cc58a;
-    --code-bg: #0a1310; color-scheme: dark;
+    --bg: #0f1513; --surface: #151d1a; --ink: #e4ebe7; --muted: #8e9b95; --line: #24302b;
+    --accent: #45b897; --accent-soft: #18302a;
+    --crit: #ff6b6b; --high: #f2715f; --med: #e8b04a; --low: #9aabb8; --ok: #4cc58a;
+    --code-bg: #111916; color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --paper: #0d1714; --panel: #12201c; --ink: #e2ebe6; --muted: #91a39b; --line: #23352f;
-  --mask: #3db596; --mask-soft: #173129; --copper: #e09455;
-  --crit: #ff6b6b; --high: #f2715f; --med: #e8b04a; --low: #93a5b3; --ok: #4cc58a;
-  --code-bg: #0a1310; color-scheme: dark;
+  --bg: #0f1513; --surface: #151d1a; --ink: #e4ebe7; --muted: #8e9b95; --line: #24302b;
+  --accent: #45b897; --accent-soft: #18302a;
+  --crit: #ff6b6b; --high: #f2715f; --med: #e8b04a; --low: #9aabb8; --ok: #4cc58a;
+  --code-bg: #111916; color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
 html, body { margin: 0; }
-body { background: var(--paper); color: var(--ink); font: 15px/1.55 var(--body); }
-a { color: var(--mask); }
-:focus-visible { outline: 2px solid var(--mask); outline-offset: 2px; }
-code, pre, textarea, .mono { font-family: var(--mono); }
+body { background: var(--bg); color: var(--ink); font: 15px/1.6 var(--body); -webkit-font-smoothing: antialiased; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+code, pre, textarea { font-family: var(--mono); }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 20px; }
 
-.wrap { max-width: 1240px; margin: 0 auto; padding: 0 20px; }
+/* top bar */
+.top { display: flex; justify-content: space-between; align-items: center; padding: 18px 0; }
+.brand { font: 600 16px var(--mono); letter-spacing: -.01em; color: var(--ink); }
+.brand span { color: var(--accent); }
+.top nav { display: flex; gap: 20px; font-size: 14px; }
+.top nav a { color: var(--muted); }
 
-/* header: datasheet title block */
-header { border-bottom: 1px solid var(--line); background: var(--panel); }
-.titleblock { display: grid; grid-template-columns: 1fr auto; gap: 8px 24px; align-items: end; padding: 22px 0 18px; }
-.part { font: 500 12px/1 var(--mono); letter-spacing: .08em; color: var(--muted); text-transform: uppercase; display: flex; gap: 14px; flex-wrap: wrap; }
-.part b { color: var(--mask); font-weight: 500; }
-h1 { font: 700 clamp(34px, 5vw, 52px)/0.95 var(--display); letter-spacing: .01em; margin: 8px 0 6px; text-wrap: balance; }
-h1 span { color: var(--mask); }
-.lede { margin: 0; color: var(--muted); max-width: 62ch; }
-.privacy { display: flex; align-items: center; gap: 10px; font-size: 13px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 6px; background: var(--mask-soft); max-width: 300px; }
-.privacy svg { flex: none; color: var(--mask); }
+/* intro */
+.intro { padding: 28px 0 28px; max-width: 640px; }
+h1 { font: 600 clamp(28px, 4vw, 38px)/1.15 var(--body); letter-spacing: -.02em; margin: 0 0 10px; text-wrap: balance; }
+.intro p { margin: 0; color: var(--muted); font-size: 16px; }
+.private { display: inline-flex; align-items: center; gap: 6px; margin-top: 14px; font-size: 13px; color: var(--accent); }
 
-/* main two-panel bench */
-main { padding: 22px 0 40px; }
-.bench { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
-@media (max-width: 900px) { .bench { grid-template-columns: minmax(0, 1fr); } .titleblock { grid-template-columns: minmax(0, 1fr); } .privacy { max-width: none; } }
-.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
-.panel-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 10px 14px; border-bottom: 1px solid var(--line); }
-.label { font: 700 15px/1 var(--display); letter-spacing: .06em; text-transform: uppercase; }
-.label small { font: 400 12px var(--mono); color: var(--muted); letter-spacing: 0; text-transform: none; margin-left: 8px; }
-.btns { display: flex; gap: 6px; flex-wrap: wrap; }
-button, .btn { font: 500 13px var(--body); color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 5px; padding: 6px 11px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
-button:hover, .btn:hover { border-color: var(--mask); color: var(--mask); }
-button.primary { background: var(--mask); border-color: var(--mask); color: #fff; }
-button.primary:hover { filter: brightness(1.08); color: #fff; }
+/* bench */
+.bench { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+@media (max-width: 880px) { .bench { grid-template-columns: minmax(0, 1fr); } }
+.pane { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.pane-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 12px 16px; }
+.pane-title { font-weight: 600; font-size: 14px; }
+.pane-title small { font-weight: 400; color: var(--muted); margin-left: 6px; }
+.actions { display: flex; gap: 2px; flex-wrap: wrap; }
+button { font: 500 13px var(--body); color: var(--muted); background: none; border: 0; border-radius: 6px; padding: 6px 10px; cursor: pointer; }
+button:hover { color: var(--ink); background: var(--code-bg); }
+button.outline { border: 1px solid var(--line); color: var(--ink); }
 
-.editor { position: relative; }
-textarea#code { display: block; width: 100%; min-height: 520px; resize: vertical; border: 0; margin: 0; padding: 14px 16px; background: var(--code-bg); color: var(--ink); font-size: 13px; line-height: 1.6; tab-size: 2; white-space: pre; overflow: auto; }
-textarea#code:focus { outline: none; box-shadow: inset 0 0 0 2px var(--mask); }
-.drop { position: absolute; inset: 0; display: none; place-items: center; text-align: center; background: color-mix(in srgb, var(--mask) 14%, var(--panel)); border: 2px dashed var(--mask); font: 700 22px var(--display); letter-spacing: .04em; color: var(--mask); }
+.editor { position: relative; border-top: 1px solid var(--line); }
+textarea#code { display: block; width: 100%; height: 560px; resize: vertical; border: 0; margin: 0; padding: 16px; background: var(--code-bg); color: var(--ink); font-size: 13px; line-height: 1.65; tab-size: 2; white-space: pre; overflow: auto; }
+textarea#code:focus { outline: none; }
+.drop { position: absolute; inset: 0; display: none; place-items: center; background: color-mix(in srgb, var(--accent) 10%, var(--surface)); border: 2px dashed var(--accent); color: var(--accent); font-weight: 600; }
 .editor.dragging .drop { display: grid; }
-.files { display: none; padding: 10px 14px; border-top: 1px solid var(--line); font: 12px var(--mono); color: var(--muted); }
+.files { display: none; padding: 10px 16px; border-top: 1px solid var(--line); font: 12px var(--mono); color: var(--muted); }
 .files.on { display: block; }
-.files ul { margin: 6px 0 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 4px 12px; }
-.hint { padding: 10px 14px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+.files ul { margin: 4px 0 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 2px 12px; }
 
-/* results: fault log */
-.summary { display: flex; gap: 6px; flex-wrap: wrap; padding: 12px 14px; border-bottom: 1px solid var(--line); }
-.chip { display: inline-flex; align-items: center; gap: 7px; font: 500 13px var(--mono); padding: 5px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--ink); cursor: pointer; }
-.chip[aria-pressed="false"] { opacity: .45; }
-.led { width: 9px; height: 9px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 22%, transparent); }
-.sev-critical { color: var(--crit); } .sev-high { color: var(--high); } .sev-medium { color: var(--med); } .sev-low { color: var(--low); }
-.verdict { padding: 14px; border-bottom: 1px solid var(--line); display: flex; gap: 12px; align-items: center; }
-.verdict .big { font: 700 40px/1 var(--display); font-variant-numeric: tabular-nums; }
+/* findings */
+.verdict { display: flex; align-items: center; gap: 14px; padding: 4px 16px 14px; }
+.verdict .n { font: 600 34px/1 var(--body); font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
 .verdict p { margin: 0; color: var(--muted); font-size: 14px; }
-.verdict.clean .big { color: var(--ok); }
-.list { max-height: 640px; overflow: auto; }
-.finding { display: grid; grid-template-columns: 4px 1fr; border-bottom: 1px solid var(--line); }
+.verdict.clean .n { color: var(--ok); }
+.filters { display: flex; gap: 6px; flex-wrap: wrap; padding: 0 16px 14px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; font: 500 12px var(--body); color: var(--ink); padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px; }
+.chip:hover { background: var(--code-bg); }
+.chip[aria-pressed="false"] { opacity: .4; }
+.chip[disabled] { display: none; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
+.sev-critical { color: var(--crit); } .sev-high { color: var(--high); } .sev-medium { color: var(--med); } .sev-low { color: var(--low); }
+.list { border-top: 1px solid var(--line); max-height: 640px; overflow: auto; }
+.finding { padding: 14px 16px; border-bottom: 1px solid var(--line); }
 .finding:last-child { border-bottom: 0; }
-.stripe { background: currentColor; }
-.fbody { padding: 12px 14px; min-width: 0; }
-.ftop { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
-.sev { font: 600 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
-.rid { font: 12px var(--mono); color: var(--muted); }
-.ftitle { font-weight: 600; }
-.loc { font: 12px var(--mono); color: var(--copper); margin-top: 2px; }
-.snip { margin: 8px 0; padding: 8px 10px; background: var(--code-bg); border-radius: 4px; font-size: 12.5px; overflow-x: auto; white-space: pre; color: var(--ink); }
-.msg { margin: 0 0 4px; }
-.fix { margin: 0; font-size: 14px; color: var(--muted); }
-.fix b { color: var(--ink); font-weight: 600; }
-.empty { padding: 26px 14px; color: var(--muted); }
+.fhead { display: flex; align-items: center; gap: 8px; }
+.ftitle { font-weight: 600; font-size: 14px; color: var(--ink); }
+.loc { margin-left: auto; font: 12px var(--mono); color: var(--muted); white-space: nowrap; }
+.snip { margin: 8px 0 6px; padding: 8px 10px; background: var(--code-bg); border-radius: 6px; font-size: 12.5px; overflow-x: auto; white-space: pre; color: var(--ink); }
+.msg { margin: 0; font-size: 14px; color: var(--ink); }
+.fix { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
+.empty { padding: 24px 16px; color: var(--muted); font-size: 14px; }
 
-/* below the bench */
-.strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; margin-top: 26px; }
-@media (max-width: 900px) { .strip { grid-template-columns: minmax(0, 1fr); } }
-.strip h2 { font: 700 18px/1.1 var(--display); letter-spacing: .05em; text-transform: uppercase; margin: 0 0 8px; }
-.strip p { margin: 0 0 8px; color: var(--muted); font-size: 14px; }
-.cmd { display: flex; align-items: center; gap: 8px; background: var(--code-bg); border: 1px solid var(--line); border-radius: 5px; padding: 6px 6px 6px 10px; font: 12.5px var(--mono); overflow-x: auto; }
-.cmd code { flex: 1; white-space: nowrap; }
-.stat { font: 700 30px/1 var(--display); color: var(--mask); font-variant-numeric: tabular-nums; }
-.rules { margin-top: 26px; }
+/* below */
+.more { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px; padding: 48px 0 8px; }
+@media (max-width: 880px) { .more { grid-template-columns: minmax(0, 1fr); gap: 24px; } }
+.more h2 { font-size: 14px; font-weight: 600; margin: 0 0 6px; }
+.more p { margin: 0 0 8px; color: var(--muted); font-size: 14px; }
+.big { font-size: 28px; font-weight: 600; letter-spacing: -.02em; color: var(--accent); font-variant-numeric: tabular-nums; line-height: 1.2; }
+.cmd { display: flex; align-items: center; gap: 4px; background: var(--code-bg); border-radius: 6px; padding: 4px 4px 4px 10px; margin-top: 6px; font: 12px var(--mono); }
+.cmd code { flex: 1; white-space: nowrap; overflow-x: auto; }
+details.rules { margin: 32px 0 0; border-top: 1px solid var(--line); padding-top: 16px; }
+details.rules summary { cursor: pointer; font-weight: 600; font-size: 14px; }
+.tablebox { overflow-x: auto; margin-top: 12px; }
 .rules table { width: 100%; border-collapse: collapse; font-size: 14px; }
-.rules th, .rules td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
-.rules th { font: 600 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
-.rules td:first-child { font-family: var(--mono); white-space: nowrap; }
-.tablebox { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
-footer { border-top: 1px solid var(--line); padding: 18px 0 30px; color: var(--muted); font-size: 13px; }
-.toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--paper); padding: 8px 14px; border-radius: 6px; font-size: 13px; opacity: 0; pointer-events: none; transition: opacity .2s; }
+.rules td { padding: 8px 10px 8px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+.rules td:first-child { font: 12px var(--mono); color: var(--muted); white-space: nowrap; width: 1%; }
+.rules td:nth-child(2) { white-space: nowrap; width: 1%; font-size: 12px; }
+.rules td span.f { color: var(--muted); }
+footer { padding: 32px 0 40px; color: var(--muted); font-size: 13px; }
+.toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: 8px; font-size: 13px; opacity: 0; pointer-events: none; transition: opacity .2s; }
 .toast.on { opacity: 1; }
 @media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 </style>
 </head>
 <body>
-<header>
-  <div class="wrap titleblock">
-    <div>
-      <div class="part"><span><b>preflash</b> v0.1.0</span><span>ESP32 · ESP8266 · Arduino · PlatformIO</span><span>15 checks</span></div>
-      <h1>Scan your sketch <span>before you flash it.</span></h1>
-      <p class="lede">Paste your code or drop in your project folder. preflash finds Wi-Fi passwords, API tokens, open firmware updates and other mistakes that let strangers into your device.</p>
-    </div>
-    <div class="privacy">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
-      <span>Runs in your browser. Your code is never uploaded or stored.</span>
-    </div>
-  </div>
-</header>
+<div class="wrap">
+  <header class="top">
+    <span class="brand">pre<span>flash</span></span>
+    <nav><a href="https://github.com/lazycoder2020-ui/preflash/blob/main/FINDINGS.md">Research</a><a href="https://github.com/lazycoder2020-ui/preflash">GitHub</a></nav>
+  </header>
 
-<main class="wrap">
-  <div class="bench">
-    <section class="panel" aria-labelledby="in-label">
-      <div class="panel-head">
-        <span class="label" id="in-label">Your code<small id="src-label">example sketch</small></span>
-        <div class="btns">
+  <section class="intro">
+    <h1>Check your ESP32 or Arduino code before you flash it</h1>
+    <p>Finds Wi-Fi passwords, API tokens, open firmware updates and other mistakes that let strangers into your device.</p>
+    <span class="private"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>Runs in your browser. Nothing is uploaded.</span>
+  </section>
+
+  <main class="bench">
+    <section class="pane" aria-labelledby="in-label">
+      <div class="pane-head">
+        <span class="pane-title" id="in-label">Code<small id="src-label">example</small></span>
+        <div class="actions">
           <button type="button" id="btn-files">Open files</button>
           <button type="button" id="btn-folder">Open folder</button>
           <button type="button" id="btn-example">Example</button>
@@ -162,53 +155,50 @@ footer { border-top: 1px solid var(--line); padding: 18px 0 30px; color: var(--m
       </div>
       <div class="editor" id="editor">
         <label for="code" class="sr">Paste your Arduino or ESP32 code</label>
-        <textarea id="code" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="Paste a .ino / .cpp / platformio.ini here, or drop files and folders onto this box"></textarea>
-        <div class="drop" aria-hidden="true">Drop files or a folder to scan</div>
+        <textarea id="code" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="Paste your .ino, .cpp or platformio.ini here, or drop a project folder"></textarea>
+        <div class="drop" aria-hidden="true">Drop to scan</div>
       </div>
       <div class="files" id="files"></div>
-      <div class="hint">Tip: drop your whole project folder to check <code>platformio.ini</code>, headers and every source file together. Library folders are skipped.</div>
       <input type="file" id="pick-files" multiple hidden accept=".ino,.pde,.c,.cc,.cpp,.cxx,.h,.hpp,.hh,.ini,.pem,.key,sdkconfig">
       <input type="file" id="pick-folder" webkitdirectory multiple hidden>
     </section>
 
-    <section class="panel" aria-labelledby="out-label" aria-live="polite">
-      <div class="panel-head">
-        <span class="label" id="out-label">Findings<small id="scan-meta"></small></span>
-        <div class="btns"><button type="button" id="btn-copy">Copy report</button></div>
+    <section class="pane" aria-labelledby="out-label" aria-live="polite">
+      <div class="pane-head">
+        <span class="pane-title" id="out-label">Results<small id="scan-meta"></small></span>
+        <div class="actions"><button type="button" class="outline" id="btn-copy">Copy report</button></div>
       </div>
       <div class="verdict" id="verdict"></div>
-      <div class="summary" id="summary" role="group" aria-label="Filter by severity"></div>
+      <div class="filters" id="summary" role="group" aria-label="Filter by severity"></div>
       <div class="list" id="list"></div>
     </section>
-  </div>
+  </main>
 
-  <div class="strip">
+  <section class="more">
     <div>
-      <h2>Why this exists</h2>
-      <div class="stat">39%</div>
-      <p>of 249 public ESP32/ESP8266 projects we scanned had at least one serious issue. 22% had a Wi-Fi password in the code, and general secret scanners caught 1% of those.</p>
+      <div class="big">1 in 3</div>
+      <p>public ESP32/ESP8266 projects we scanned had a serious issue. Most leaked Wi-Fi passwords that general secret scanners miss.</p>
       <a href="https://github.com/lazycoder2020-ui/preflash/blob/main/FINDINGS.md">Read the findings</a>
     </div>
     <div>
-      <h2>Use it on your machine</h2>
-      <p>The same checks as a command-line tool. No account, no dependencies.</p>
+      <h2>Run it on your computer</h2>
+      <p>Same checks, as a command-line tool.</p>
       <div class="cmd"><code id="cmd1">pip install git+https://github.com/lazycoder2020-ui/preflash</code><button type="button" data-copy="cmd1">Copy</button></div>
-      <div class="cmd" style="margin-top:6px"><code id="cmd2">preflash path/to/project</code><button type="button" data-copy="cmd2">Copy</button></div>
+      <div class="cmd"><code id="cmd2">preflash path/to/project</code><button type="button" data-copy="cmd2">Copy</button></div>
     </div>
     <div>
       <h2>Found a password?</h2>
-      <p>Deleting it from the code isn't enough if it was ever pushed to GitHub. Change the password or rotate the key, then keep secrets in a git-ignored <code>arduino_secrets.h</code>.</p>
-      <a href="https://github.com/lazycoder2020-ui/preflash">preflash on GitHub</a>
+      <p>If it was ever pushed to GitHub, change it. Deleting it from the code doesn't remove it from history. Keep secrets in a git-ignored <code>arduino_secrets.h</code>.</p>
     </div>
-  </div>
-
-  <section class="rules" aria-labelledby="rules-h">
-    <div class="strip" style="grid-template-columns:minmax(0,1fr);margin:0 0 10px"><h2 id="rules-h">What it checks</h2></div>
-    <div class="tablebox"><table id="rules-table"><thead><tr><th>Check</th><th>Severity</th><th>What it catches</th></tr></thead><tbody></tbody></table></div>
   </section>
-</main>
 
-<footer><div class="wrap">preflash is free and open source (MIT). It uses pattern rules, so it can miss unusual code and occasionally flag test code. Always review findings yourself.</div></footer>
+  <details class="rules">
+    <summary>All 15 checks</summary>
+    <div class="tablebox"><table id="rules-table"><tbody></tbody></table></div>
+  </details>
+
+  <footer>Free and open source (MIT). Pattern-based checks can miss unusual code, so review results yourself.</footer>
+</div>
 <div class="toast" id="toast" role="status"></div>
 
 <script>
@@ -714,31 +704,27 @@ void loop() {
 
     if (!last.filesScanned) {
       verdict.className = "verdict";
-      verdict.innerHTML = `<div class="big">–</div><p>Paste code or open files to start. Nothing to scan yet.</p>`;
+      verdict.innerHTML = `<div class="n">–</div><p>Paste code or open a project to start.</p>`;
     } else if (!f.length) {
       verdict.className = "verdict clean";
-      verdict.innerHTML = `<div class="big">0</div><p>No issues found. Good work. preflash can't catch everything, so still keep secrets out of public repos.</p>`;
+      verdict.innerHTML = `<div class="n">0</div><p>No issues found.</p>`;
     } else {
       verdict.className = "verdict";
-      verdict.innerHTML = `<div class="big ${serious ? "sev-high" : "sev-medium"}">${f.length}</div><p>${f.length} issue${f.length === 1 ? "" : "s"} found${serious ? `, ${serious} serious enough to fix before you flash or push this code` : ""}.</p>`;
+      verdict.innerHTML = `<div class="n ${serious ? "sev-high" : "sev-medium"}">${f.length}</div><p>${f.length === 1 ? "issue" : "issues"} found${serious ? `<br>${serious} to fix before you flash or push` : ""}</p>`;
     }
 
-    summary.innerHTML = SEVS.map((s) => `<button type="button" class="chip sev-${s}" data-sev="${s}" aria-pressed="${shown[s]}"><span class="led"></span><span style="color:var(--ink)">${counts[s]} ${s}</span></button>`).join("");
+    summary.innerHTML = SEVS.filter((s) => counts[s]).map((s) => `<button type="button" class="chip" data-sev="${s}" aria-pressed="${shown[s]}"><span class="dot sev-${s}"></span>${counts[s]} ${s}</button>`).join("");
     summary.style.display = f.length ? "" : "none";
 
     const vis = f.filter((x) => shown[x.severity]);
     if (!f.length) { list.innerHTML = last.filesScanned ? `<div class="empty">Nothing to report.</div>` : ""; return; }
     if (!vis.length) { list.innerHTML = `<div class="empty">All findings are hidden by the filters above.</div>`; return; }
     list.innerHTML = vis.map((x) => `
-      <article class="finding sev-${x.severity}">
-        <div class="stripe"></div>
-        <div class="fbody">
-          <div class="ftop"><span class="sev">${x.severity}</span><span class="ftitle" style="color:var(--ink)">${esc(x.title)}</span><span class="rid">${x.rule}</span></div>
-          <div class="loc">${esc(x.file)}:${x.line}</div>
-          ${x.snippet ? `<pre class="snip">${esc(x.snippet)}</pre>` : ""}
-          <p class="msg" style="color:var(--ink)">${md(x.message)}</p>
-          <p class="fix"><b>Fix:</b> ${md(x.fix)}</p>
-        </div>
+      <article class="finding">
+        <div class="fhead"><span class="dot sev-${x.severity}" title="${x.severity}"></span><span class="ftitle">${esc(x.title)}</span><span class="loc">${esc(x.file)}:${x.line}</span></div>
+        ${x.snippet ? `<pre class="snip">${esc(x.snippet)}</pre>` : ""}
+        <p class="msg">${md(x.message)}</p>
+        <p class="fix">${md(x.fix)}</p>
       </article>`).join("");
   }
 
@@ -750,7 +736,7 @@ void loop() {
   // ---- input handling
   let timer;
   code.addEventListener("input", () => {
-    if (mode === "files") setPasteMode("pasted code");
+    if (mode === "files") setPasteMode("");
     clearTimeout(timer); timer = setTimeout(run, 150);
   });
 
@@ -766,7 +752,7 @@ void loop() {
     fileSet = scanned; mode = "files";
     const skipped = all.length - scanned.length;
     const el = $("files"); el.className = "files on";
-    el.innerHTML = `${scanned.length} file${scanned.length === 1 ? "" : "s"} loaded${skipped ? ` · ${skipped} other file${skipped === 1 ? "" : "s"} skipped (libraries, build output, non-code)` : ""}<ul>${scanned.slice(0, 40).map((f) => `<li>${esc(f.path)}</li>`).join("")}${scanned.length > 40 ? `<li>+${scanned.length - 40} more</li>` : ""}</ul>`;
+    el.innerHTML = `${scanned.length} file${scanned.length === 1 ? "" : "s"} scanned${skipped ? ` · ${skipped} skipped (libraries, build files)` : ""}<ul>${scanned.slice(0, 40).map((f) => `<li>${esc(f.path)}</li>`).join("")}${scanned.length > 40 ? `<li>+${scanned.length - 40} more</li>` : ""}</ul>`;
     const first = scanned.find((f) => /\.(ino|cpp|c)$/i.test(f.path)) || scanned[0];
     code.value = first ? `// Showing ${first.path} (${scanned.length} file(s) scanned). Edit to switch back to paste mode.\n\n${first.text}` : "";
     $("src-label").textContent = scanned.length ? `${scanned.length} file${scanned.length === 1 ? "" : "s"}` : "no code files found";
@@ -832,8 +818,8 @@ void loop() {
   // copy the FileList first: it is live and empties when the input is reset
   $("pick-files").onchange = (e) => { const fl = [...e.target.files]; e.target.value = ""; fromFileList(fl); };
   $("pick-folder").onchange = (e) => { const fl = [...e.target.files]; e.target.value = ""; fromFileList(fl); };
-  $("btn-example").onclick = () => { code.value = EXAMPLE; setPasteMode("example sketch"); run(); };
-  $("btn-clear").onclick = () => { code.value = ""; setPasteMode("pasted code"); run(); code.focus(); };
+  $("btn-example").onclick = () => { code.value = EXAMPLE; setPasteMode("example"); run(); };
+  $("btn-clear").onclick = () => { code.value = ""; setPasteMode(""); run(); code.focus(); };
 
   async function copy(text, msg) {
     try { await navigator.clipboard.writeText(text); toast(msg); }
@@ -850,7 +836,7 @@ void loop() {
 
   // rules table
   $("rules-table").querySelector("tbody").innerHTML = Object.values(pf.RULES).map((r) =>
-    `<tr><td>${r.id}</td><td><span class="sev sev-${r.severity}">${r.severity}</span></td><td><b>${esc(r.title)}</b><br><span style="color:var(--muted)">${esc(r.fix)}</span></td></tr>`).join("");
+    `<tr><td>${r.id}</td><td class="sev-${r.severity}">${r.severity}</td><td>${esc(r.title)}<br><span class="f">${esc(r.fix)}</span></td></tr>`).join("");
 
   // open in a working state
   code.value = EXAMPLE; run();
