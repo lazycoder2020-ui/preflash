@@ -1,0 +1,32 @@
+name: preflash
+description: Security scan for Arduino / ESP32 / ESP8266 firmware source code
+branding:
+  icon: shield
+  color: green
+inputs:
+  path:
+    description: Folder to scan
+    default: "."
+  fail-on:
+    description: Fail the job at this severity or above (critical, high, medium, low, never)
+    default: high
+  sarif:
+    description: Upload results to GitHub code scanning (needs security-events write permission)
+    default: "true"
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+    - shell: bash
+      run: pip install "${{ github.action_path }}"
+    - shell: bash
+      run: preflash "${{ inputs.path }}" --format sarif -o preflash.sarif --fail-on never
+    - if: inputs.sarif == 'true'
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: preflash.sarif
+        category: preflash
+    - shell: bash
+      run: preflash "${{ inputs.path }}" --fail-on "${{ inputs.fail-on }}"

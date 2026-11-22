@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "preflash"
+version = "0.1.0"
+description = "Security scanner for Arduino, ESP32 and ESP8266 code. Scan before you flash."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.8"
+keywords = ["esp32", "esp8266", "arduino", "platformio", "iot", "security", "secrets", "sast"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Topic :: Security",
+  "Topic :: Software Development :: Embedded Systems",
+  "License :: OSI Approved :: MIT License",
+]
+dependencies = []
+
+[project.scripts]
+preflash = "preflash.cli:main"
+
+[tool.setuptools]
+packages = ["preflash"]

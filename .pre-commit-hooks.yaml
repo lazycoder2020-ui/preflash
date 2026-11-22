@@ -1,0 +1,6 @@
+- id: preflash
+  name: preflash (ESP32/Arduino security scan)
+  entry: preflash
+  language: python
+  pass_filenames: false
+  args: ["."]
