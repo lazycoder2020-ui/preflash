@@ -5,199 +5,165 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>preflash Sketch Checker</title>
 <meta name="description" content="Paste your Arduino, ESP32 or ESP8266 code and find hard-coded Wi-Fi passwords, API tokens, open OTA updates and insecure TLS. Runs in your browser; nothing is uploaded.">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-/* Layout idea: a quiet two-pane bench. Code on the left, findings on the right.
-   One accent (solder-mask green); severity colours only where something needs attention. */
+/* Layout idea: a maker's tool page. Plain prose up top, the code box, and results printed
+   like the Arduino Serial Monitor at 115200 baud. System fonts, square corners, underlined links. */
 :root {
-  --bg: #fafaf8;
-  --surface: #ffffff;
-  --ink: #17201d;
-  --muted: #68736e;
-  --line: #e6e8e4;
-  --accent: #0e6a57;
-  --accent-soft: #e8f2ee;
-  --crit: #b4232a; --high: #c9372c; --med: #b7791f; --low: #6b7a86; --ok: #1f8a5b;
-  --code-bg: #f4f5f2;
-  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --bg: #fdfdfb;
+  --ink: #1b1d1c;
+  --muted: #6d716e;
+  --rule: #dcdcd6;
+  --accent: #0a6b55;
+  --field: #ffffff;
+  --mon-bg: #101412;      /* serial monitor stays dark in both themes */
+  --mon-ink: #d6ddd9;
+  --mon-dim: #7f8a85;
+  --crit: #ff5c5c; --high: #ff7a5c; --med: #f0b440; --low: #8fa3b3; --ok: #5ccf8f;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, "Liberation Mono", monospace;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #0f1513; --surface: #151d1a; --ink: #e4ebe7; --muted: #8e9b95; --line: #24302b;
-    --accent: #45b897; --accent-soft: #18302a;
-    --crit: #ff6b6b; --high: #f2715f; --med: #e8b04a; --low: #9aabb8; --ok: #4cc58a;
-    --code-bg: #111916; color-scheme: dark;
+    --bg: #151716; --ink: #e3e6e4; --muted: #949a96; --rule: #2c302e; --accent: #4cc3a0;
+    --field: #1b1e1c; --mon-bg: #0b0d0c; color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --bg: #0f1513; --surface: #151d1a; --ink: #e4ebe7; --muted: #8e9b95; --line: #24302b;
-  --accent: #45b897; --accent-soft: #18302a;
-  --crit: #ff6b6b; --high: #f2715f; --med: #e8b04a; --low: #9aabb8; --ok: #4cc58a;
-  --code-bg: #111916; color-scheme: dark;
+  --bg: #151716; --ink: #e3e6e4; --muted: #949a96; --rule: #2c302e; --accent: #4cc3a0;
+  --field: #1b1e1c; --mon-bg: #0b0d0c; color-scheme: dark;
 }
-
 * { box-sizing: border-box; }
 html, body { margin: 0; }
-body { background: var(--bg); color: var(--ink); font: 15px/1.6 var(--body); -webkit-font-smoothing: antialiased; }
-a { color: var(--accent); text-decoration: none; }
-a:hover { text-decoration: underline; }
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
-code, pre, textarea { font-family: var(--mono); }
-.wrap { max-width: 1120px; margin: 0 auto; padding: 0 20px; }
+body { background: var(--bg); color: var(--ink); font: 16px/1.6 var(--sans); }
+a { color: var(--accent); text-underline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+code, pre, textarea, .mono { font-family: var(--mono); }
+.wrap { max-width: 1080px; margin: 0 auto; padding: 0 20px; }
 
-/* top bar */
-.top { display: flex; justify-content: space-between; align-items: center; padding: 18px 0; }
-.brand { font: 600 16px var(--mono); letter-spacing: -.01em; color: var(--ink); }
-.brand span { color: var(--accent); }
-.top nav { display: flex; gap: 20px; font-size: 14px; }
-.top nav a { color: var(--muted); }
+header { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; padding: 22px 0 0; font-size: 14px; }
+header b { font: 700 15px var(--mono); }
+header .ver { color: var(--muted); font: 13px var(--mono); }
+header nav { margin-left: auto; display: flex; gap: 18px; }
 
-/* intro */
-.intro { padding: 28px 0 28px; max-width: 640px; }
-h1 { font: 600 clamp(28px, 4vw, 38px)/1.15 var(--body); letter-spacing: -.02em; margin: 0 0 10px; text-wrap: balance; }
-.intro p { margin: 0; color: var(--muted); font-size: 16px; }
-.private { display: inline-flex; align-items: center; gap: 6px; margin-top: 14px; font-size: 13px; color: var(--accent); }
+.intro { max-width: 62ch; padding: 36px 0 26px; }
+.intro h1 { font-size: 26px; line-height: 1.25; margin: 0 0 12px; font-weight: 700; letter-spacing: -.01em; }
+.intro p { margin: 0 0 10px; }
+.intro .note { color: var(--muted); font-size: 14px; }
 
-/* bench */
-.bench { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+.bench { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: stretch; }
 @media (max-width: 880px) { .bench { grid-template-columns: minmax(0, 1fr); } }
-.pane { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
-.pane-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 12px 16px; }
-.pane-title { font-weight: 600; font-size: 14px; }
-.pane-title small { font-weight: 400; color: var(--muted); margin-left: 6px; }
-.actions { display: flex; gap: 2px; flex-wrap: wrap; }
-button { font: 500 13px var(--body); color: var(--muted); background: none; border: 0; border-radius: 6px; padding: 6px 10px; cursor: pointer; }
-button:hover { color: var(--ink); background: var(--code-bg); }
-button.outline { border: 1px solid var(--line); color: var(--ink); }
+.col { display: flex; flex-direction: column; min-width: 0; }
+.bar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; font-size: 14px; padding: 0 0 8px; }
+.bar .label { font-weight: 600; }
+.bar .meta { color: var(--muted); font: 13px var(--mono); }
+.bar .push { margin-left: auto; display: flex; gap: 14px; flex-wrap: wrap; }
+.link { font: inherit; font-size: 14px; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.link:hover { color: var(--ink); }
 
-.editor { position: relative; border-top: 1px solid var(--line); }
-textarea#code { display: block; width: 100%; height: 560px; resize: vertical; border: 0; margin: 0; padding: 16px; background: var(--code-bg); color: var(--ink); font-size: 13px; line-height: 1.65; tab-size: 2; white-space: pre; overflow: auto; }
-textarea#code:focus { outline: none; }
-.drop { position: absolute; inset: 0; display: none; place-items: center; background: color-mix(in srgb, var(--accent) 10%, var(--surface)); border: 2px dashed var(--accent); color: var(--accent); font-weight: 600; }
+.editor { position: relative; flex: 1; display: flex; }
+textarea#code { flex: 1; width: 100%; min-height: 540px; resize: vertical; margin: 0; padding: 12px 14px; border: 1px solid var(--rule); border-radius: 2px; background: var(--field); color: var(--ink); font-size: 13px; line-height: 1.6; tab-size: 2; white-space: pre; overflow: auto; }
+textarea#code:focus { outline: none; border-color: var(--accent); }
+.drop { position: absolute; inset: 0; display: none; place-items: center; border: 2px dashed var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--bg)); color: var(--accent); font: 600 15px var(--mono); }
 .editor.dragging .drop { display: grid; }
-.files { display: none; padding: 10px 16px; border-top: 1px solid var(--line); font: 12px var(--mono); color: var(--muted); }
+.files { display: none; padding-top: 8px; font: 12px var(--mono); color: var(--muted); }
 .files.on { display: block; }
-.files ul { margin: 4px 0 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 2px 12px; }
+.files ul { margin: 2px 0 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 0 12px; }
 
-/* findings */
-.verdict { display: flex; align-items: center; gap: 14px; padding: 4px 16px 14px; }
-.verdict .n { font: 600 34px/1 var(--body); font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
-.verdict p { margin: 0; color: var(--muted); font-size: 14px; }
-.verdict.clean .n { color: var(--ok); }
-.filters { display: flex; gap: 6px; flex-wrap: wrap; padding: 0 16px 14px; }
-.chip { display: inline-flex; align-items: center; gap: 6px; font: 500 12px var(--body); color: var(--ink); padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px; }
-.chip:hover { background: var(--code-bg); }
-.chip[aria-pressed="false"] { opacity: .4; }
-.chip[disabled] { display: none; }
-.dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
-.sev-critical { color: var(--crit); } .sev-high { color: var(--high); } .sev-medium { color: var(--med); } .sev-low { color: var(--low); }
-.list { border-top: 1px solid var(--line); max-height: 640px; overflow: auto; }
-.finding { padding: 14px 16px; border-bottom: 1px solid var(--line); }
-.finding:last-child { border-bottom: 0; }
-.fhead { display: flex; align-items: center; gap: 8px; }
-.ftitle { font-weight: 600; font-size: 14px; color: var(--ink); }
-.loc { margin-left: auto; font: 12px var(--mono); color: var(--muted); white-space: nowrap; }
-.snip { margin: 8px 0 6px; padding: 8px 10px; background: var(--code-bg); border-radius: 6px; font-size: 12.5px; overflow-x: auto; white-space: pre; color: var(--ink); }
-.msg { margin: 0; font-size: 14px; color: var(--ink); }
-.fix { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
-.empty { padding: 24px 16px; color: var(--muted); font-size: 14px; }
+/* serial monitor */
+.monitor { flex: 1; min-height: 540px; max-height: 720px; display: flex; flex-direction: column; background: var(--mon-bg); color: var(--mon-ink); border-radius: 2px; font: 13px/1.6 var(--mono); overflow: hidden; }
+.mon-head { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 8px 14px; border-bottom: 1px solid #222826; color: var(--mon-dim); font-size: 12px; }
+#summary { display: flex; gap: 12px; flex-wrap: wrap; }
+.tog { font: inherit; background: none; border: 0; padding: 0; cursor: pointer; color: var(--mon-ink); }
+.tog[aria-pressed="false"] { opacity: .35; text-decoration: line-through; }
+.mon-body { flex: 1; overflow: auto; padding: 12px 14px 18px; }
+#verdict { margin: 0 0 12px; }
+#verdict .dim, .dim { color: var(--mon-dim); }
+.finding { margin: 0 0 16px; }
+.tag { font-weight: 700; }
+.t-critical { color: var(--crit); } .t-high { color: var(--high); } .t-medium { color: var(--med); } .t-low { color: var(--low); } .t-ok { color: var(--ok); }
+.finding .where { color: var(--mon-dim); }
+.finding pre { margin: 2px 0 2px 2ch; color: #f0d9a8; white-space: pre; overflow-x: auto; font: inherit; }
+.finding .ln { margin-left: 2ch; }
+.finding code { color: #f0d9a8; font: inherit; }
+.cursor { display: inline-block; width: .6em; height: 1.1em; vertical-align: text-bottom; background: var(--mon-dim); animation: blink 1.1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .cursor { animation: none; } }
 
 /* below */
-.more { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px; padding: 48px 0 8px; }
-@media (max-width: 880px) { .more { grid-template-columns: minmax(0, 1fr); gap: 24px; } }
-.more h2 { font-size: 14px; font-weight: 600; margin: 0 0 6px; }
-.more p { margin: 0 0 8px; color: var(--muted); font-size: 14px; }
-.big { font-size: 28px; font-weight: 600; letter-spacing: -.02em; color: var(--accent); font-variant-numeric: tabular-nums; line-height: 1.2; }
-.cmd { display: flex; align-items: center; gap: 4px; background: var(--code-bg); border-radius: 6px; padding: 4px 4px 4px 10px; margin-top: 6px; font: 12px var(--mono); }
-.cmd code { flex: 1; white-space: nowrap; overflow-x: auto; }
-details.rules { margin: 32px 0 0; border-top: 1px solid var(--line); padding-top: 16px; }
-details.rules summary { cursor: pointer; font-weight: 600; font-size: 14px; }
-.tablebox { overflow-x: auto; margin-top: 12px; }
-.rules table { width: 100%; border-collapse: collapse; font-size: 14px; }
-.rules td { padding: 8px 10px 8px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
-.rules td:first-child { font: 12px var(--mono); color: var(--muted); white-space: nowrap; width: 1%; }
-.rules td:nth-child(2) { white-space: nowrap; width: 1%; font-size: 12px; }
-.rules td span.f { color: var(--muted); }
-footer { padding: 32px 0 40px; color: var(--muted); font-size: 13px; }
-.toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: 8px; font-size: 13px; opacity: 0; pointer-events: none; transition: opacity .2s; }
+.prose { max-width: 62ch; padding: 48px 0 0; }
+.prose h2 { font-size: 18px; margin: 32px 0 8px; }
+.prose h2:first-child { margin-top: 0; }
+.prose p { margin: 0 0 12px; }
+.prose pre { background: var(--field); border: 1px solid var(--rule); border-radius: 2px; padding: 10px 12px; font-size: 13px; overflow-x: auto; margin: 0 0 12px; }
+.checks { font: 13px/1.75 var(--mono); overflow-x: auto; white-space: pre; margin: 0; padding: 0; border: 0; background: none; }
+footer { margin-top: 48px; padding: 18px 0 36px; border-top: 1px solid var(--rule); color: var(--muted); font-size: 13px; }
+.toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 6px 12px; font: 13px var(--mono); opacity: 0; pointer-events: none; }
 .toast.on { opacity: 1; }
-@media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <header class="top">
-    <span class="brand">pre<span>flash</span></span>
-    <nav><a href="https://github.com/lazycoder2020-ui/preflash/blob/main/FINDINGS.md">Research</a><a href="https://github.com/lazycoder2020-ui/preflash">GitHub</a></nav>
+  <header>
+    <b>preflash</b><span class="ver">v0.1.0</span>
+    <nav><a href="https://github.com/lazycoder2020-ui/preflash/blob/main/FINDINGS.md">findings</a><a href="https://github.com/lazycoder2020-ui/preflash">source</a></nav>
   </header>
 
   <section class="intro">
-    <h1>Check your ESP32 or Arduino code before you flash it</h1>
-    <p>Finds Wi-Fi passwords, API tokens, open firmware updates and other mistakes that let strangers into your device.</p>
-    <span class="private"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>Runs in your browser. Nothing is uploaded.</span>
+    <h1>Scan your ESP32 / Arduino sketch before you flash it.</h1>
+    <p>I scanned 249 public ESP32 and ESP8266 projects on GitHub. About 1 in 5 had a home Wi-Fi password sitting in the code, plus Blynk and Telegram tokens, open OTA updates and <code>setInsecure()</code> everywhere. The usual secret scanners missed nearly all the Wi-Fi passwords, so I wrote this.</p>
+    <p class="note">Paste your code or drop your project folder in. It all runs in this tab. Nothing gets sent anywhere.</p>
   </section>
 
   <main class="bench">
-    <section class="pane" aria-labelledby="in-label">
-      <div class="pane-head">
-        <span class="pane-title" id="in-label">Code<small id="src-label">example</small></span>
-        <div class="actions">
-          <button type="button" id="btn-files">Open files</button>
-          <button type="button" id="btn-folder">Open folder</button>
-          <button type="button" id="btn-example">Example</button>
-          <button type="button" id="btn-clear">Clear</button>
-        </div>
+    <section class="col" aria-labelledby="in-label">
+      <div class="bar">
+        <span class="label" id="in-label">your code</span><span class="meta" id="src-label">example</span>
+        <span class="push">
+          <button type="button" class="link" id="btn-files">open files</button>
+          <button type="button" class="link" id="btn-folder">open folder</button>
+          <button type="button" class="link" id="btn-example">example</button>
+          <button type="button" class="link" id="btn-clear">clear</button>
+        </span>
       </div>
       <div class="editor" id="editor">
         <label for="code" class="sr">Paste your Arduino or ESP32 code</label>
-        <textarea id="code" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="Paste your .ino, .cpp or platformio.ini here, or drop a project folder"></textarea>
-        <div class="drop" aria-hidden="true">Drop to scan</div>
+        <textarea id="code" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="// paste a .ino / .cpp / platformio.ini here"></textarea>
+        <div class="drop" aria-hidden="true">drop to scan</div>
       </div>
       <div class="files" id="files"></div>
       <input type="file" id="pick-files" multiple hidden accept=".ino,.pde,.c,.cc,.cpp,.cxx,.h,.hpp,.hh,.ini,.pem,.key,sdkconfig">
       <input type="file" id="pick-folder" webkitdirectory multiple hidden>
     </section>
 
-    <section class="pane" aria-labelledby="out-label" aria-live="polite">
-      <div class="pane-head">
-        <span class="pane-title" id="out-label">Results<small id="scan-meta"></small></span>
-        <div class="actions"><button type="button" class="outline" id="btn-copy">Copy report</button></div>
+    <section class="col" aria-labelledby="out-label">
+      <div class="bar">
+        <span class="label" id="out-label">output</span><span class="meta" id="scan-meta"></span>
+        <span class="push"><button type="button" class="link" id="btn-copy">copy report</button></span>
       </div>
-      <div class="verdict" id="verdict"></div>
-      <div class="filters" id="summary" role="group" aria-label="Filter by severity"></div>
-      <div class="list" id="list"></div>
+      <div class="monitor" aria-live="polite">
+        <div class="mon-head"><span>preflash · 115200 baud</span><span id="summary" role="group" aria-label="Show or hide by severity"></span></div>
+        <div class="mon-body"><div id="verdict"></div><div id="list"></div></div>
+      </div>
     </section>
   </main>
 
-  <section class="more">
-    <div>
-      <div class="big">1 in 3</div>
-      <p>public ESP32/ESP8266 projects we scanned had a serious issue. Most leaked Wi-Fi passwords that general secret scanners miss.</p>
-      <a href="https://github.com/lazycoder2020-ui/preflash/blob/main/FINDINGS.md">Read the findings</a>
-    </div>
-    <div>
-      <h2>Run it on your computer</h2>
-      <p>Same checks, as a command-line tool.</p>
-      <div class="cmd"><code id="cmd1">pip install git+https://github.com/lazycoder2020-ui/preflash</code><button type="button" data-copy="cmd1">Copy</button></div>
-      <div class="cmd"><code id="cmd2">preflash path/to/project</code><button type="button" data-copy="cmd2">Copy</button></div>
-    </div>
-    <div>
-      <h2>Found a password?</h2>
-      <p>If it was ever pushed to GitHub, change it. Deleting it from the code doesn't remove it from history. Keep secrets in a git-ignored <code>arduino_secrets.h</code>.</p>
-    </div>
+  <section class="prose">
+    <h2>Found something?</h2>
+    <p>If the code was ever pushed to GitHub, change that password or rotate the token. Deleting the line doesn't remove it from git history. Then move secrets into an <code>arduino_secrets.h</code> and add it to <code>.gitignore</code>.</p>
+
+    <h2>Run it locally</h2>
+    <p>Same checks, from the terminal. No account, no dependencies.</p>
+    <pre id="cmd1">pip install git+https://github.com/lazycoder2020-ui/preflash
+preflash path/to/your/project</pre>
+    <p><button type="button" class="link" data-copy="cmd1">copy commands</button> · there's also a GitHub Action and a pre-commit hook in the <a href="https://github.com/lazycoder2020-ui/preflash#readme">README</a>.</p>
+
+    <h2>What it checks</h2>
+    <pre class="checks" id="rules-table"></pre>
   </section>
 
-  <details class="rules">
-    <summary>All 15 checks</summary>
-    <div class="tablebox"><table id="rules-table"><tbody></tbody></table></div>
-  </details>
-
-  <footer>Free and open source (MIT). Pattern-based checks can miss unusual code, so review results yourself.</footer>
+  <footer>MIT licensed. It's pattern matching, so it'll miss clever code and sometimes flag test files. Read the results, don't just trust them. Bugs and new rules welcome on <a href="https://github.com/lazycoder2020-ui/preflash/issues">GitHub</a>.</footer>
 </div>
 <div class="toast" id="toast" role="status"></div>
 
@@ -287,7 +253,7 @@ void loop() {
     const t0 = performance.now();
     last = pf.scan(items, { force });
     const ms = Math.max(1, Math.round(performance.now() - t0));
-    $("scan-meta").textContent = `${last.filesScanned} file${last.filesScanned === 1 ? "" : "s"} · ${ms} ms`;
+    $("scan-meta").textContent = `${ms} ms`;
     render();
   }
 
@@ -295,34 +261,28 @@ void loop() {
     const f = last.findings;
     const counts = Object.fromEntries(SEVS.map((s) => [s, f.filter((x) => x.severity === s).length]));
     const serious = counts.critical + counts.high;
+    const caret = '<span class="cursor"></span>';
+    summary.innerHTML = SEVS.filter((s) => counts[s]).map((s) =>
+      `<button type="button" class="tog t-${s}" data-sev="${s}" aria-pressed="${shown[s]}">${counts[s]} ${s}</button>`).join("");
 
     if (!last.filesScanned) {
-      verdict.className = "verdict";
-      verdict.innerHTML = `<div class="n">–</div><p>Paste code or open a project to start.</p>`;
-    } else if (!f.length) {
-      verdict.className = "verdict clean";
-      verdict.innerHTML = `<div class="n">0</div><p>No issues found.</p>`;
-    } else {
-      verdict.className = "verdict";
-      verdict.innerHTML = `<div class="n ${serious ? "sev-high" : "sev-medium"}">${f.length}</div><p>${f.length === 1 ? "issue" : "issues"} found${serious ? `<br>${serious} to fix before you flash or push` : ""}</p>`;
+      verdict.innerHTML = `<span class="dim">&gt; waiting for code...</span>`; list.innerHTML = caret; return;
     }
-
-    summary.innerHTML = SEVS.filter((s) => counts[s]).map((s) => `<button type="button" class="chip" data-sev="${s}" aria-pressed="${shown[s]}"><span class="dot sev-${s}"></span>${counts[s]} ${s}</button>`).join("");
-    summary.style.display = f.length ? "" : "none";
-
+    if (!f.length) {
+      verdict.innerHTML = `<span class="dim">&gt; preflash ${esc($("src-label").textContent || "sketch")}</span><br><span class="t-ok">0 issues.</span> <span class="dim">Nothing obvious. Still keep secrets out of public repos.</span>`;
+      list.innerHTML = caret; return;
+    }
+    verdict.innerHTML = `<span class="dim">&gt; preflash ${esc($("src-label").textContent || "sketch")}</span><br>${f.length} issue${f.length === 1 ? "" : "s"}${serious ? `, <span class="t-high">${serious} to fix before you flash or push</span>` : ""}.`;
     const vis = f.filter((x) => shown[x.severity]);
-    if (!f.length) { list.innerHTML = last.filesScanned ? `<div class="empty">Nothing to report.</div>` : ""; return; }
-    if (!vis.length) { list.innerHTML = `<div class="empty">All findings are hidden by the filters above.</div>`; return; }
+    if (!vis.length) { list.innerHTML = `<span class="dim">(all hidden by the filter above)</span><br>${caret}`; return; }
     list.innerHTML = vis.map((x) => `
-      <article class="finding">
-        <div class="fhead"><span class="dot sev-${x.severity}" title="${x.severity}"></span><span class="ftitle">${esc(x.title)}</span><span class="loc">${esc(x.file)}:${x.line}</span></div>
-        ${x.snippet ? `<pre class="snip">${esc(x.snippet)}</pre>` : ""}
-        <p class="msg">${md(x.message)}</p>
-        <p class="fix">${md(x.fix)}</p>
-      </article>`).join("");
-  }
-
-  summary.addEventListener("click", (e) => {
+      <div class="finding">
+        <div><span class="tag t-${x.severity}">[${x.severity.toUpperCase()}]</span> ${esc(x.title)} <span class="where">${esc(x.file)}:${x.line}</span></div>
+        ${x.snippet ? `<pre>${esc(x.snippet)}</pre>` : ""}
+        <div class="ln">${md(x.message)}</div>
+        <div class="ln dim">fix: ${md(x.fix)}</div>
+      </div>`).join("") + caret;
+  }("click", (e) => {
     const b = e.target.closest("[data-sev]"); if (!b) return;
     shown[b.dataset.sev] = !shown[b.dataset.sev]; render();
   });
@@ -330,7 +290,7 @@ void loop() {
   // ---- input handling
   let timer;
   code.addEventListener("input", () => {
-    if (mode === "files") setPasteMode("");
+    if (mode === "files" || $("src-label").textContent === "example") setPasteMode("sketch.ino");
     clearTimeout(timer); timer = setTimeout(run, 150);
   });
 
@@ -346,7 +306,7 @@ void loop() {
     fileSet = scanned; mode = "files";
     const skipped = all.length - scanned.length;
     const el = $("files"); el.className = "files on";
-    el.innerHTML = `${scanned.length} file${scanned.length === 1 ? "" : "s"} scanned${skipped ? ` · ${skipped} skipped (libraries, build files)` : ""}<ul>${scanned.slice(0, 40).map((f) => `<li>${esc(f.path)}</li>`).join("")}${scanned.length > 40 ? `<li>+${scanned.length - 40} more</li>` : ""}</ul>`;
+    el.innerHTML = `${scanned.length} file${scanned.length === 1 ? "" : "s"} scanned${skipped ? `, ${skipped} skipped (libraries, build files)` : ""}<ul>${scanned.slice(0, 40).map((f) => `<li>${esc(f.path)}</li>`).join("")}${scanned.length > 40 ? `<li>+${scanned.length - 40} more</li>` : ""}</ul>`;
     const first = scanned.find((f) => /\.(ino|cpp|c)$/i.test(f.path)) || scanned[0];
     code.value = first ? `// Showing ${first.path} (${scanned.length} file(s) scanned). Edit to switch back to paste mode.\n\n${first.text}` : "";
     $("src-label").textContent = scanned.length ? `${scanned.length} file${scanned.length === 1 ? "" : "s"}` : "no code files found";
@@ -413,7 +373,7 @@ void loop() {
   $("pick-files").onchange = (e) => { const fl = [...e.target.files]; e.target.value = ""; fromFileList(fl); };
   $("pick-folder").onchange = (e) => { const fl = [...e.target.files]; e.target.value = ""; fromFileList(fl); };
   $("btn-example").onclick = () => { code.value = EXAMPLE; setPasteMode("example"); run(); };
-  $("btn-clear").onclick = () => { code.value = ""; setPasteMode(""); run(); code.focus(); };
+  $("btn-clear").onclick = () => { code.value = ""; setPasteMode("sketch.ino"); run(); code.focus(); };
 
   async function copy(text, msg) {
     try { await navigator.clipboard.writeText(text); toast(msg); }
@@ -429,8 +389,8 @@ void loop() {
   document.querySelectorAll("[data-copy]").forEach((b) => b.onclick = () => copy($(b.dataset.copy).textContent, "Copied"));
 
   // rules table
-  $("rules-table").querySelector("tbody").innerHTML = Object.values(pf.RULES).map((r) =>
-    `<tr><td>${r.id}</td><td class="sev-${r.severity}">${r.severity}</td><td>${esc(r.title)}<br><span class="f">${esc(r.fix)}</span></td></tr>`).join("");
+  $("rules-table").textContent = Object.values(pf.RULES).map((r) =>
+    `${r.id}  ${r.severity.padEnd(8)}  ${r.title}`).join("\n");
 
   // open in a working state
   code.value = EXAMPLE; run();
