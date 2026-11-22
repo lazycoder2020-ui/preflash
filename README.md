@@ -28,6 +28,15 @@ HIGH     PF008 Firmware updates (OTA) accept anyone
 
 Secrets are masked in the output, so a screenshot of the report doesn't leak them again.
 
+## Try it in your browser
+
+**[lazycoder2020-ui.github.io/preflash](https://lazycoder2020-ui.github.io/preflash/)**: paste a sketch or drop your
+project folder. It runs entirely in your browser, so your code is never uploaded.
+
+The web version uses `web/engine.js`, a JavaScript port of the same rules.
+`python tests/test_parity.py` checks both give identical results (they match on all 359 repos
+from the research sample). Rebuild the page with `python scripts/build_web.py`.
+
 ## Install
 
 ```bash

@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>preflash Sketch Checker</title>
+<meta name="description" content="Paste your Arduino, ESP32 or ESP8266 code and find hard-coded Wi-Fi passwords, API tokens, open OTA updates and insecure TLS. Runs in your browser; nothing is uploaded.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: a component datasheet. Code goes in on the left like a part under test,
+   findings come out on the right as a fault log with LED status markers. */
+:root {
+  --paper: #f5f6f2;
+  --panel: #ffffff;
+  --ink: #15211d;
+  --muted: #5c6a64;
+  --line: #d9ded8;
+  --mask: #0e6a57;        /* solder-mask green: the one accent */
+  --mask-soft: #e3efe9;
+  --copper: #a85a1c;      /* pad/trace copper, used for code highlights */
+  --crit: #b4232a; --high: #c9372c; --med: #b7791f; --low: #5a6b78; --ok: #1f8a5b;
+  --code-bg: #f0f2ee;
+  --display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0d1714; --panel: #12201c; --ink: #e2ebe6; --muted: #91a39b; --line: #23352f;
+    --mask: #3db596; --mask-soft: #173129; --copper: #e09455;
+    --crit: #ff6b6b; --high: #f2715f; --med: #e8b04a; --low: #93a5b3; --ok: #4cc58a;
+    --code-bg: #0a1310; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #0d1714; --panel: #12201c; --ink: #e2ebe6; --muted: #91a39b; --line: #23352f;
+  --mask: #3db596; --mask-soft: #173129; --copper: #e09455;
+  --crit: #ff6b6b; --high: #f2715f; --med: #e8b04a; --low: #93a5b3; --ok: #4cc58a;
+  --code-bg: #0a1310; color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--paper); color: var(--ink); font: 15px/1.55 var(--body); }
+a { color: var(--mask); }
+:focus-visible { outline: 2px solid var(--mask); outline-offset: 2px; }
+code, pre, textarea, .mono { font-family: var(--mono); }
+
+.wrap { max-width: 1240px; margin: 0 auto; padding: 0 20px; }
+
+/* header: datasheet title block */
+header { border-bottom: 1px solid var(--line); background: var(--panel); }
+.titleblock { display: grid; grid-template-columns: 1fr auto; gap: 8px 24px; align-items: end; padding: 22px 0 18px; }
+.part { font: 500 12px/1 var(--mono); letter-spacing: .08em; color: var(--muted); text-transform: uppercase; display: flex; gap: 14px; flex-wrap: wrap; }
+.part b { color: var(--mask); font-weight: 500; }
+h1 { font: 700 clamp(34px, 5vw, 52px)/0.95 var(--display); letter-spacing: .01em; margin: 8px 0 6px; text-wrap: balance; }
+h1 span { color: var(--mask); }
+.lede { margin: 0; color: var(--muted); max-width: 62ch; }
+.privacy { display: flex; align-items: center; gap: 10px; font-size: 13px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 6px; background: var(--mask-soft); max-width: 300px; }
+.privacy svg { flex: none; color: var(--mask); }
+
+/* main two-panel bench */
+main { padding: 22px 0 40px; }
+.bench { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 900px) { .bench { grid-template-columns: minmax(0, 1fr); } .titleblock { grid-template-columns: minmax(0, 1fr); } .privacy { max-width: none; } }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.panel-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.label { font: 700 15px/1 var(--display); letter-spacing: .06em; text-transform: uppercase; }
+.label small { font: 400 12px var(--mono); color: var(--muted); letter-spacing: 0; text-transform: none; margin-left: 8px; }
+.btns { display: flex; gap: 6px; flex-wrap: wrap; }
+button, .btn { font: 500 13px var(--body); color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 5px; padding: 6px 11px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+button:hover, .btn:hover { border-color: var(--mask); color: var(--mask); }
+button.primary { background: var(--mask); border-color: var(--mask); color: #fff; }
+button.primary:hover { filter: brightness(1.08); color: #fff; }
+
+.editor { position: relative; }
+textarea#code { display: block; width: 100%; min-height: 520px; resize: vertical; border: 0; margin: 0; padding: 14px 16px; background: var(--code-bg); color: var(--ink); font-size: 13px; line-height: 1.6; tab-size: 2; white-space: pre; overflow: auto; }
+textarea#code:focus { outline: none; box-shadow: inset 0 0 0 2px var(--mask); }
+.drop { position: absolute; inset: 0; display: none; place-items: center; text-align: center; background: color-mix(in srgb, var(--mask) 14%, var(--panel)); border: 2px dashed var(--mask); font: 700 22px var(--display); letter-spacing: .04em; color: var(--mask); }
+.editor.dragging .drop { display: grid; }
+.files { display: none; padding: 10px 14px; border-top: 1px solid var(--line); font: 12px var(--mono); color: var(--muted); }
+.files.on { display: block; }
+.files ul { margin: 6px 0 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.hint { padding: 10px 14px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+
+/* results: fault log */
+.summary { display: flex; gap: 6px; flex-wrap: wrap; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.chip { display: inline-flex; align-items: center; gap: 7px; font: 500 13px var(--mono); padding: 5px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--ink); cursor: pointer; }
+.chip[aria-pressed="false"] { opacity: .45; }
+.led { width: 9px; height: 9px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 22%, transparent); }
+.sev-critical { color: var(--crit); } .sev-high { color: var(--high); } .sev-medium { color: var(--med); } .sev-low { color: var(--low); }
+.verdict { padding: 14px; border-bottom: 1px solid var(--line); display: flex; gap: 12px; align-items: center; }
+.verdict .big { font: 700 40px/1 var(--display); font-variant-numeric: tabular-nums; }
+.verdict p { margin: 0; color: var(--muted); font-size: 14px; }
+.verdict.clean .big { color: var(--ok); }
+.list { max-height: 640px; overflow: auto; }
+.finding { display: grid; grid-template-columns: 4px 1fr; border-bottom: 1px solid var(--line); }
+.finding:last-child { border-bottom: 0; }
+.stripe { background: currentColor; }
+.fbody { padding: 12px 14px; min-width: 0; }
+.ftop { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.sev { font: 600 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+.rid { font: 12px var(--mono); color: var(--muted); }
+.ftitle { font-weight: 600; }
+.loc { font: 12px var(--mono); color: var(--copper); margin-top: 2px; }
+.snip { margin: 8px 0; padding: 8px 10px; background: var(--code-bg); border-radius: 4px; font-size: 12.5px; overflow-x: auto; white-space: pre; color: var(--ink); }
+.msg { margin: 0 0 4px; }
+.fix { margin: 0; font-size: 14px; color: var(--muted); }
+.fix b { color: var(--ink); font-weight: 600; }
+.empty { padding: 26px 14px; color: var(--muted); }
+
+/* below the bench */
+.strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; margin-top: 26px; }
+@media (max-width: 900px) { .strip { grid-template-columns: minmax(0, 1fr); } }
+.strip h2 { font: 700 18px/1.1 var(--display); letter-spacing: .05em; text-transform: uppercase; margin: 0 0 8px; }
+.strip p { margin: 0 0 8px; color: var(--muted); font-size: 14px; }
+.cmd { display: flex; align-items: center; gap: 8px; background: var(--code-bg); border: 1px solid var(--line); border-radius: 5px; padding: 6px 6px 6px 10px; font: 12.5px var(--mono); overflow-x: auto; }
+.cmd code { flex: 1; white-space: nowrap; }
+.stat { font: 700 30px/1 var(--display); color: var(--mask); font-variant-numeric: tabular-nums; }
+.rules { margin-top: 26px; }
+.rules table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.rules th, .rules td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.rules th { font: 600 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.rules td:first-child { font-family: var(--mono); white-space: nowrap; }
+.tablebox { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+footer { border-top: 1px solid var(--line); padding: 18px 0 30px; color: var(--muted); font-size: 13px; }
+.toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--paper); padding: 8px 14px; border-radius: 6px; font-size: 13px; opacity: 0; pointer-events: none; transition: opacity .2s; }
+.toast.on { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap titleblock">
+    <div>
+      <div class="part"><span><b>preflash</b> v0.1.0</span><span>ESP32 · ESP8266 · Arduino · PlatformIO</span><span>15 checks</span></div>
+      <h1>Scan your sketch <span>before you flash it.</span></h1>
+      <p class="lede">Paste your code or drop in your project folder. preflash finds Wi-Fi passwords, API tokens, open firmware updates and other mistakes that let strangers into your device.</p>
+    </div>
+    <div class="privacy">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+      <span>Runs in your browser. Your code is never uploaded or stored.</span>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="bench">
+    <section class="panel" aria-labelledby="in-label">
+      <div class="panel-head">
+        <span class="label" id="in-label">Your code<small id="src-label">example sketch</small></span>
+        <div class="btns">
+          <button type="button" id="btn-files">Open files</button>
+          <button type="button" id="btn-folder">Open folder</button>
+          <button type="button" id="btn-example">Example</button>
+          <button type="button" id="btn-clear">Clear</button>
+        </div>
+      </div>
+      <div class="editor" id="editor">
+        <label for="code" class="sr">Paste your Arduino or ESP32 code</label>
+        <textarea id="code" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="Paste a .ino / .cpp / platformio.ini here, or drop files and folders onto this box"></textarea>
+        <div class="drop" aria-hidden="true">Drop files or a folder to scan</div>
+      </div>
+      <div class="files" id="files"></div>
+      <div class="hint">Tip: drop your whole project folder to check <code>platformio.ini</code>, headers and every source file together. Library folders are skipped.</div>
+      <input type="file" id="pick-files" multiple hidden accept=".ino,.pde,.c,.cc,.cpp,.cxx,.h,.hpp,.hh,.ini,.pem,.key,sdkconfig">
+      <input type="file" id="pick-folder" webkitdirectory multiple hidden>
+    </section>
+
+    <section class="panel" aria-labelledby="out-label" aria-live="polite">
+      <div class="panel-head">
+        <span class="label" id="out-label">Findings<small id="scan-meta"></small></span>
+        <div class="btns"><button type="button" id="btn-copy">Copy report</button></div>
+      </div>
+      <div class="verdict" id="verdict"></div>
+      <div class="summary" id="summary" role="group" aria-label="Filter by severity"></div>
+      <div class="list" id="list"></div>
+    </section>
+  </div>
+
+  <div class="strip">
+    <div>
+      <h2>Why this exists</h2>
+      <div class="stat">39%</div>
+      <p>of 249 public ESP32/ESP8266 projects we scanned had at least one serious issue. 22% had a Wi-Fi password in the code, and general secret scanners caught 1% of those.</p>
+      <a href="https://github.com/lazycoder2020-ui/preflash/blob/main/FINDINGS.md">Read the findings</a>
+    </div>
+    <div>
+      <h2>Use it on your machine</h2>
+      <p>The same checks as a command-line tool. No account, no dependencies.</p>
+      <div class="cmd"><code id="cmd1">pip install git+https://github.com/lazycoder2020-ui/preflash</code><button type="button" data-copy="cmd1">Copy</button></div>
+      <div class="cmd" style="margin-top:6px"><code id="cmd2">preflash path/to/project</code><button type="button" data-copy="cmd2">Copy</button></div>
+    </div>
+    <div>
+      <h2>Found a password?</h2>
+      <p>Deleting it from the code isn't enough if it was ever pushed to GitHub. Change the password or rotate the key, then keep secrets in a git-ignored <code>arduino_secrets.h</code>.</p>
+      <a href="https://github.com/lazycoder2020-ui/preflash">preflash on GitHub</a>
+    </div>
+  </div>
+
+  <section class="rules" aria-labelledby="rules-h">
+    <div class="strip" style="grid-template-columns:minmax(0,1fr);margin:0 0 10px"><h2 id="rules-h">What it checks</h2></div>
+    <div class="tablebox"><table id="rules-table"><thead><tr><th>Check</th><th>Severity</th><th>What it catches</th></tr></thead><tbody></tbody></table></div>
+  </section>
+</main>
+
+<footer><div class="wrap">preflash is free and open source (MIT). It uses pattern rules, so it can miss unusual code and occasionally flag test code. Always review findings yourself.</div></footer>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+/* preflash engine (JavaScript port of preflash/rules.py).
+ * Runs entirely in the browser or in Node. Keep in sync with rules.py:
+ * tests/parity.mjs runs both on the same inputs and fails on any difference.
+ */
+(function (root) {
+  "use strict";
+
+  const SEV_ORDER = { critical: 4, high: 3, medium: 2, low: 1 };
+  const CODE_EXT = [".ino", ".pde", ".c", ".cc", ".cpp", ".cxx", ".h", ".hpp", ".hh"];
+  const CONFIG_NAMES = ["platformio.ini", "sdkconfig", "sdkconfig.defaults", "partitions.csv"];
+  const KEY_EXT = [".key", ".pem"];
+  const SKIP_DIRS = [".git", ".pio", "build", "node_modules", ".vscode", "__pycache__",
+    "managed_components", "components", "lib_deps", ".github"];
+  const LIB_DIRS = ["libraries", "lib", "libdeps", "vendor", "third_party", "external"];
+
+  // ------------------------------------------------------------ files
+  function ext(name) { const i = name.lastIndexOf("."); return i < 0 ? "" : name.slice(i).toLowerCase(); }
+  function base(p) { return p.split("/").pop(); }
+
+  function shouldScan(path, includeLibs) {
+    const parts = path.split("/");
+    const dirs = parts.slice(0, -1);
+    for (const d of dirs) {
+      if (SKIP_DIRS.includes(d)) return false;
+      if (!includeLibs && LIB_DIRS.includes(d.toLowerCase())) return false;
+    }
+    const name = parts[parts.length - 1];
+    return CODE_EXT.includes(ext(name)) || CONFIG_NAMES.includes(name) || KEY_EXT.includes(ext(name));
+  }
+
+  const COMMENT_RE = /\/\/[^\n]*|\/\*[\s\S]*?\*\/|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'/g;
+  function stripComments(text) {
+    return text.replace(COMMENT_RE, (s) => (s[0] === "/" ? s.replace(/[^\n]/g, " ") : s));
+  }
+
+  function makeFile(path, text) {
+    const name = base(path);
+    const isConfig = CONFIG_NAMES.includes(name) || KEY_EXT.includes(ext(name));
+    // newline offsets for fast line lookup
+    const nl = [];
+    for (let i = 0; i < text.length; i++) if (text.charCodeAt(i) === 10) nl.push(i);
+    return {
+      path, text, isConfig,
+      lines: text.split(/\r\n|\r|\n/),
+      code: isConfig ? text : stripComments(text),
+      lineOf(off) { let lo = 0, hi = nl.length; while (lo < hi) { const mid = (lo + hi) >> 1; if (nl[mid] < off) lo = mid + 1; else hi = mid; } return lo + 1; },
+    };
+  }
+
+  // ------------------------------------------------------------ helpers
+  const STR = String.raw`"((?:\\.|[^"\\\n])*)"`;
+  const PLACEHOLDER_WORDS = ["your", "enter", "insert", "replace", "placeholder", "example", "changeme",
+    "change_me", "xxxx", "****", "<", ">", "here", "dummy", "sample", "todo",
+    "fill", "mynetwork", "my_network", "mypassword", "my_password",
+    "_here", "put_", "write_", "redacted", "hidden", "...", "default"];
+  const PLACEHOLDER_EXACT = new Set(["", "password", "pass", "passwd", "pwd", "ssid", "wifi", "secret", "token",
+    "key", "apikey", "api_key", "user", "username", "none", "null", "test",
+    "mqtt", "mqtt_user", "mqtt_pass", "mqttuser", "mqttpass", "wifi_ssid",
+    "wifi_password", "auth", "authtoken", "auth_token", "ssid_name", "string", "text",
+    "abc", "abcd", "abcdef", "qwerty", "foo", "bar", "foobar", "default"]);
+
+  function isPlaceholder(v) {
+    const lv = v.trim().toLowerCase();
+    if (PLACEHOLDER_EXACT.has(lv)) return true;
+    if (/^[x*.\-_#?0]+$/.test(lv)) return true;
+    if (lv.includes("%") || lv.includes("{") || lv.includes("\\x")) return true;
+    if (PLACEHOLDER_WORDS.some((w) => lv.includes(w))) return true;
+    if (/pass|pwd|ssid|wifi|token|secret|apikey|api_key/.test(lv) && (!/\d/.test(lv) || lv.includes(" "))) return true;
+    if (lv.includes(" ") && /^[a-z ]+$/.test(lv)) return true;
+    return false;
+  }
+
+  function mask(v) {
+    if (v.length <= 4) return "*".repeat(v.length);
+    return v.slice(0, 2) + "*".repeat(Math.min(8, v.length - 4)) + v.slice(-2);
+  }
+
+  function snippet(sf, line, secret) {
+    let s = line > 0 && line <= sf.lines.length ? sf.lines[line - 1].trim() : "";
+    if (secret) s = s.split(secret).join(mask(secret));
+    return s.slice(0, 160);
+  }
+
+  const stripStrings = (s) => s.replace(new RegExp(STR, "g"), '""');
+  const all = (re, s) => s.matchAll(re);
+  const R = (src, flags = "") => new RegExp(src, "g" + flags);
+
+  const RULES = {};
+  function rule(id, severity, title, fix, fn) { RULES[id] = { id, severity, title, fix, fn }; }
+  function F(id, sf, line, message, secret) {
+    const r = RULES[id];
+    return { rule: id, severity: r.severity, title: r.title, file: sf.path, line,
+      message, fix: r.fix, snippet: snippet(sf, line, secret) };
+  }
+
+  const ASSIGN = R(String.raw`(?:#\s*define\s+(?<d>\w+)\s+|\b(?:const\s+|static\s+|constexpr\s+)*(?:char|String|std::string|auto)\b[\s*&]*(?:const\s+)?(?<v>\w+)\s*(?:\[[^\]]*\])?\s*(?:PROGMEM\s*)?=\s*)` + STR);
+  const NAME_WIFI_PASS = /(pass|pwd|psk|passphrase|wifikey|wifi_key|wpa)/i;
+  const NAME_NOT_WIFI = /(mqtt|ota|admin|http|web|www|blynk|api|ftp|smtp|mail|db|sql|influx|firebase|user|login|ap_|_ap|soft|portal|update|auth|telegram|bot|hash|text|label|msg|prompt|lang|hint|placeholder|caption|title|str_|_str|html|json|field)/i;
+  const NAME_MQTT = /mqtt/i;
+  const NAME_CRED = /(pass|pwd|token|key|secret)/i;
+  const NAME_NOT_CRED = /(client_?id|topic|server|host|port|broker|url|user)/i;
+  const NAME_TOKEN = /(token|api_?key|apikey|secret|auth|bearer|write_?key|read_?key|access_?key|private_?key|client_?secret|webhook|chat_?id|bot)/i;
+  const NAME_NOT_TOKEN = /(keyboard|keypad|keycode|keypress|key_?pin|monkey|turkey|hotkey|keyframe|tokenizer|pass|pwd|user|mqtt|ssid|host|url|server|topic|name|path|header|prefix|format|fmt|label|type|len|size|idx|index|count|_?id$)/i;
+  const SECRET_IDENT = String.raw`\b\w*(?:pass(?:word)?|pwd|psk|token|api_?key|apikey|secret)\w*\b`;
+
+  function* assignments(sf) {
+    for (const m of all(ASSIGN, sf.text)) {
+      yield [m.groups.d || m.groups.v || "", m[3], sf.lineOf(m.index)];
+    }
+  }
+
+  // ------------------------------------------------------------ rules
+  rule("PF001", "high", "Hard-coded Wi-Fi password",
+    "Move credentials to a git-ignored secrets.h (or arduino_secrets.h), or use WiFiManager / Improv so the password is entered on the device.",
+    (files) => {
+      const out = [];
+      for (const sf of files) {
+        if (sf.isConfig) continue;
+        for (const [name, val, ln] of assignments(sf)) {
+          if (NAME_WIFI_PASS.test(name) && !NAME_NOT_WIFI.test(name) && !isPlaceholder(val) && val.length >= 4)
+            out.push(F("PF001", sf, ln, `Wi-Fi password stored in \`${name}\`. Anyone who sees this code can join your network.`, val));
+        }
+        for (const m of all(R(String.raw`\b(?:WiFi|wifiMulti|WiFiMulti|wifi_multi)\s*\.\s*(?:begin|addAP)\s*\(\s*` + STR + String.raw`\s*,\s*` + STR), sf.code)) {
+          const val = m[2];
+          if (!isPlaceholder(val) && val.length >= 4)
+            out.push(F("PF001", sf, sf.lineOf(m.index), "Wi-Fi password passed as a literal to WiFi.begin/addAP.", val));
+        }
+      }
+      return out;
+    });
+
+  rule("PF002", "high", "Hard-coded MQTT credentials",
+    "Keep broker credentials in a git-ignored secrets file and use a per-device username/password or client certificate.",
+    (files) => {
+      const out = [];
+      for (const sf of files) {
+        if (sf.isConfig) continue;
+        for (const [name, val, ln] of assignments(sf)) {
+          if (NAME_MQTT.test(name) && NAME_CRED.test(name) && !NAME_NOT_CRED.test(name) && !isPlaceholder(val) && val.length >= 3)
+            out.push(F("PF002", sf, ln, `MQTT credential stored in \`${name}\`.`, val));
+        }
+        for (const m of all(R(String.raw`\.\s*connect\s*\(\s*[^,()]+,\s*` + STR + String.raw`\s*,\s*` + STR), sf.code)) {
+          const val = m[2];
+          if (!isPlaceholder(val) && val.length >= 3)
+            out.push(F("PF002", sf, sf.lineOf(m.index), "MQTT username/password passed as literals to connect().", val));
+        }
+      }
+      return out;
+    });
+
+  const KNOWN_TOKENS = [
+    ["Blynk auth token", String.raw`BLYNK_AUTH_TOKEN\s+"([A-Za-z0-9_\-]{28,40})"`],
+    ["Blynk auth token", String.raw`Blynk\.begin\s*\(\s*"([A-Za-z0-9_\-]{28,40})"`],
+    ["Telegram bot token", String.raw`"(\d{8,10}:[A-Za-z0-9_\-]{35})"`],
+    ["Google / Firebase API key", String.raw`"(AIza[0-9A-Za-z_\-]{35})"`],
+    ["OpenAI API key", String.raw`"(sk-(?:proj-)?[A-Za-z0-9_\-]{20,})"`],
+    ["AWS access key", String.raw`"((?:AKIA|ASIA)[0-9A-Z]{16})"`],
+    ["Discord webhook", String.raw`(https://(?:ptb\.|canary\.)?discord(?:app)?\.com/api/webhooks/\d+/[\w\-]+)`],
+    ["Slack webhook", String.raw`(https://hooks\.slack\.com/services/[\w/]+)`],
+    ["Adafruit IO key", String.raw`"(aio_[A-Za-z0-9]{28})"`],
+    ["Twilio auth", String.raw`"((?:AC|SK)[0-9a-f]{32})"`],
+    ["IFTTT webhook key", String.raw`maker\.ifttt\.com/trigger/[^"]*/with/key/([A-Za-z0-9_\-]{20,})`],
+  ];
+
+  rule("PF003", "high", "Hard-coded API key or token",
+    "Rotate this key now, then load it from a git-ignored secrets file. Prefer short-lived or device-scoped tokens.",
+    (files) => {
+      const out = [], seen = new Set();
+      for (const sf of files) {
+        if (sf.isConfig) continue;
+        for (const [label, src] of KNOWN_TOKENS) {
+          for (const m of all(R(src), sf.text)) {
+            const ln = sf.lineOf(m.index);
+            seen.add(sf.path + "\0" + ln);
+            out.push(F("PF003", sf, ln, `${label} found in source.`, m[1]));
+          }
+        }
+        for (const [name, val, ln] of assignments(sf)) {
+          if (seen.has(sf.path + "\0" + ln)) continue;
+          if (NAME_TOKEN.test(name) && !NAME_NOT_TOKEN.test(name) && !isPlaceholder(val) && val.length >= 12
+              && /^[A-Za-z0-9_\-:.=+/]+$/.test(val) && /\d/.test(val) && /[A-Za-z]/.test(val))
+            out.push(F("PF003", sf, ln, `Secret-looking value stored in \`${name}\`.`, val));
+        }
+      }
+      return out;
+    });
+
+  rule("PF004", "critical", "Private key embedded in firmware source",
+    "Never commit device private keys. Provision them per device (e.g. into NVS / secure element) and revoke this key with the issuer (AWS IoT, etc.).",
+    (files) => {
+      const out = [];
+      for (const sf of files)
+        for (const m of all(R(String.raw`-----BEGIN (?:RSA |EC |ENCRYPTED |OPENSSH )?PRIVATE KEY-----(?:\\n|\\r|[\s"])*[A-Za-z0-9+/]{40,}`), sf.text))
+          out.push(F("PF004", sf, sf.lineOf(m.index), "A private key is committed with the code. Anyone can impersonate this device."));
+      return out;
+    });
+
+  rule("PF005", "high", "TLS certificate checking disabled",
+    "Use setCACert() with the server's root CA (or a certificate bundle) instead of setInsecure().",
+    (files) => {
+      const out = [];
+      const pats = [
+        [String.raw`\.\s*setInsecure\s*\(\s*\)`, "setInsecure() accepts any certificate, so the connection can be intercepted."],
+        [String.raw`skip_cert_common_name_check\s*=\s*true`, "Server name check is skipped."],
+        [String.raw`^CONFIG_ESP_TLS_INSECURE\s*=\s*y`, "ESP-TLS insecure mode is enabled."],
+        [String.raw`^CONFIG_ESP_TLS_SKIP_SERVER_CERT_VERIFY\s*=\s*y`, "Server certificate verification is turned off."],
+      ];
+      for (const sf of files)
+        for (const [p, msg] of pats)
+          for (const m of all(R(p, "m"), sf.code)) out.push(F("PF005", sf, sf.lineOf(m.index), msg));
+      return out;
+    });
+
+  rule("PF006", "medium", "MQTT traffic is not encrypted",
+    "Use port 8883 with WiFiClientSecure (or mqtts://) so credentials and data are not sent in plain text.",
+    (files) => {
+      const out = [];
+      const uses = files.some((sf) => !sf.isConfig && /PubSubClient|AsyncMqttClient|esp_mqtt_client|MQTTClient|mqtt/i.test(sf.code));
+      if (!uses) return out;
+      for (const sf of files) {
+        if (sf.isConfig) continue;
+        for (const m of all(R(String.raw`(?:setServer\s*\([^,)]+,\s*|port\w*\s*=\s*|\bMQTT_PORT\s+)1883\b|"mqtts?://[^"]*"|"(?:tcp|ws)://[^"]*"`, "i"), sf.code)) {
+          if (m[0].toLowerCase().includes("mqtts://")) continue;
+          out.push(F("PF006", sf, sf.lineOf(m.index), "MQTT is configured without TLS (port 1883 / mqtt://)."));
+        }
+      }
+      return out;
+    });
+
+  rule("PF007", "medium", "Secret sent over plain HTTP",
+    "Use https:// and send keys in a header, not in the URL.",
+    (files) => {
+      const out = [];
+      for (const sf of files) {
+        if (sf.isConfig) continue;
+        for (const m of all(R(String.raw`"(http://[^"\s]*[?&](?:key|apikey|api_key|appid|token|access_token|auth|secret|password|pass)=([^"&\s]+)[^"]*)"`, "i"), sf.code)) {
+          const val = m[2];
+          if (isPlaceholder(val) || val.startsWith('"')) continue;
+          out.push(F("PF007", sf, sf.lineOf(m.index), "An API key/token is placed in an http:// URL and sent unencrypted.", val));
+        }
+      }
+      return out;
+    });
+
+  rule("PF008", "high", "Firmware updates (OTA) accept anyone",
+    "Call ArduinoOTA.setPassword()/setPasswordHash() before begin(), and give web updaters a username and password.",
+    (files) => {
+      const out = [];
+      const code = files.filter((s) => !s.isConfig).map((s) => s.code).join("\n");
+      const hasPw = /ArduinoOTA\s*\.\s*setPassword(?:Hash)?\s*\(/.test(code);
+      for (const sf of files) {
+        if (sf.isConfig) continue;
+        if (!hasPw)
+          for (const m of all(R(String.raw`ArduinoOTA\s*\.\s*begin\s*\(`), sf.code))
+            out.push(F("PF008", sf, sf.lineOf(m.index), "ArduinoOTA is started with no password: anyone on the network can flash new firmware."));
+        for (const m of all(R(String.raw`\b(?:Async)?ElegantOTA\s*\.\s*begin\s*\(\s*[^,()]+\)|\.\s*setup\s*\(\s*&\s*\w+\s*\)`), sf.code)) {
+          if (m[0].includes("setup") && !/HTTPUpdateServer|ESP8266HTTPUpdateServer/.test(code)) continue;
+          out.push(F("PF008", sf, sf.lineOf(m.index), "Web firmware-update page has no login."));
+        }
+      }
+      return out;
+    });
+
+  rule("PF009", "medium", "Hard-coded OTA password",
+    "Use setPasswordHash() with an MD5 hash kept out of the repo, and keep upload passwords out of platformio.ini (use an env variable).",
+    (files) => {
+      const out = [];
+      for (const sf of files) {
+        if (sf.isConfig) {
+          for (const m of all(R(String.raw`--auth[= ]\s*([^\s;"']+)`), sf.text)) {
+            const val = m[1];
+            if (!val.startsWith("${") && !isPlaceholder(val))
+              out.push(F("PF009", sf, sf.lineOf(m.index), "OTA upload password stored in platformio.ini.", val));
+          }
+          continue;
+        }
+        for (const m of all(R(String.raw`ArduinoOTA\s*\.\s*setPassword\s*\(\s*` + STR), sf.code)) {
+          if (!isPlaceholder(m[1])) out.push(F("PF009", sf, sf.lineOf(m.index), "OTA password written in the source.", m[1]));
+        }
+        for (const m of all(R(String.raw`ElegantOTA\s*\.\s*begin\s*\([^,]+,\s*` + STR + String.raw`\s*,\s*` + STR), sf.code)) {
+          if (!isPlaceholder(m[2])) out.push(F("PF009", sf, sf.lineOf(m.index), "OTA web-updater password written in the source.", m[2]));
+        }
+      }
+      return out;
+    });
+
+  rule("PF010", "medium", "Web control panel has no login",
+    "Protect routes with server.authenticate()/requestAuthentication() (or ESPAsyncWebServer setAuthentication), at least for routes that change state.",
+    (files) => {
+      const out = [];
+      const code = files.filter((s) => !s.isConfig).map((s) => s.code).join("\n");
+      if (/authenticate\s*\(|requestAuthentication\s*\(|setAuthentication\s*\(|checkAuth|isAuthenticated|basicAuth|digestAuth/.test(code)) return out;
+      for (const sf of files) {
+        if (sf.isConfig) continue;
+        const routes = [...all(R(String.raw`\b\w+\s*(?:\.|->)\s*on\s*\(\s*"(/[^"]*)"`), sf.code)];
+        const risky = routes.filter((r) => r[1] !== "/" && !/\.(?:css|js|png|jpe?g|ico|svg|gif|woff2?|ttf|map|txt)$/i.test(r[1]));
+        if (!risky.length) continue;
+        const names = [...new Set(risky.map((r) => r[1]))].sort().slice(0, 6).join(", ");
+        out.push(F("PF010", sf, sf.lineOf(risky[0].index), `${risky.length} web route(s) (${names}) with no authentication anywhere in the project. Anyone on the network can use them.`));
+      }
+      return out;
+    });
+
+  function firstSecret(args, excl) {
+    for (const h of all(R(SECRET_IDENT, "i"), args)) {
+      const after = args.slice(h.index + h[0].length);
+      if (/^\s*\(/.test(after)) continue;
+      if (excl.test(h[0])) continue;
+      return h[0];
+    }
+    return null;
+  }
+
+  rule("PF011", "medium", "Secret printed to the serial console",
+    "Don't print passwords or tokens. Serial logs end up in screenshots, forum posts and bug reports.",
+    (files) => {
+      const out = [];
+      for (const sf of files) {
+        if (sf.isConfig) continue;
+        for (const m of all(R(String.raw`\b(?:Serial\d?|DEBUG_PORT|Serial\.printf|Log)\s*\.\s*(?:print|println|printf|write)\s*\(([^;]*)\)\s*;`), sf.code)) {
+          const args = stripStrings(m[1]);
+          const hit = firstSecret(args, /type|error|status|info|len|valid|expir|count|size|ok|set|required/i);
+          if (hit && !/\.length\(\)|sizeof|strlen/.test(args))
+            out.push(F("PF011", sf, sf.lineOf(m.index), `\`${hit}\` is printed to serial.`));
+        }
+      }
+      return out;
+    });
+
+  const WEAK_AP = new Set(["12345678", "123456789", "1234567890", "password", "password1",
+    "00000000", "11111111", "87654321", "qwertyui", "admin123",
+    "esp32esp32", "esp8266esp8266", "configesp", "12341234"]);
+
+  rule("PF012", "medium", "Open or weak Wi-Fi access point",
+    "Give the device's own access point a long unique password (ideally per device, e.g. printed on a label), or close the AP after setup.",
+    (files) => {
+      const out = [];
+      for (const sf of files) {
+        if (sf.isConfig) continue;
+        for (const m of all(R(String.raw`softAP\s*\(\s*` + STR + String.raw`\s*(?:\)|,\s*` + STR + String.raw`\s*[,)]|,\s*(?:NULL|nullptr|0)\s*[,)])`), sf.code)) {
+          const pw = m[2]; const ln = sf.lineOf(m.index);
+          if (pw === undefined || pw === "")
+            out.push(F("PF012", sf, ln, "Access point has no password; anyone nearby can connect."));
+          else if (WEAK_AP.has(pw.toLowerCase()) || pw.length < 10 || /^\d+$/.test(pw))
+            out.push(F("PF012", sf, ln, "Access point uses a weak, guessable password.", pw));
+        }
+      }
+      return out;
+    });
+
+  rule("PF013", "high", "Credentials returned in a web response",
+    "Never send stored passwords or tokens back to the browser; show masked values instead.",
+    (files) => {
+      const out = [];
+      for (const sf of files) {
+        if (sf.isConfig) continue;
+        for (const m of all(R(String.raw`(?:\bserver\w*|\bwebServer\w*|\brequest|\breq)\s*(?:\.|->)\s*(?:send|send_P|sendContent|print|println)\s*\(([^;]*)\)\s*;`), sf.code)) {
+          const hit = firstSecret(stripStrings(m[1]), /type|error|status|len|valid|required/i);
+          if (hit) out.push(F("PF013", sf, sf.lineOf(m.index), `\`${hit}\` is sent back in an HTTP response.`));
+        }
+      }
+      return out;
+    });
+
+  rule("PF014", "low", "Verbose debug logging enabled",
+    "Use CORE_DEBUG_LEVEL=1 (errors only) or lower for release builds.",
+    (files) => {
+      const out = [];
+      for (const sf of files)
+        for (const m of all(R(String.raw`CORE_DEBUG_LEVEL\s*=\s*[45]\b|^CONFIG_LOG_DEFAULT_LEVEL_(?:DEBUG|VERBOSE)\s*=\s*y`, "m"), sf.code))
+          out.push(F("PF014", sf, sf.lineOf(m.index), "Debug/verbose logs can leak keys, URLs and memory contents."));
+      return out;
+    });
+
+  rule("PF015", "low", "Remote debug console enabled",
+    "Remove Telnet/RemoteDebug in release builds or protect it with a password.",
+    (files) => {
+      const out = [];
+      for (const sf of files) {
+        if (sf.isConfig) continue;
+        for (const m of all(R(String.raw`\bRemoteDebug\b\s+\w+\s*;|TelnetStream\s*\.\s*begin\s*\(|\bESPTelnet\b\s+\w+\s*;`), sf.code))
+          out.push(F("PF015", sf, sf.lineOf(m.index), "A network debug console (telnet) is enabled with no login."));
+      }
+      return out;
+    });
+
+  // ------------------------------------------------------------ run
+  function scan(inputs, opts = {}) {
+    // inputs: [{path, text}]
+    const files = inputs.filter((f) => opts.force || shouldScan(f.path, opts.includeLibs))
+      .map((f) => makeFile(f.path, f.text));
+    let findings = [];
+    for (const id of Object.keys(RULES)) findings = findings.concat(RULES[id].fn(files));
+    const uniq = new Map();
+    for (const x of findings) { const k = `${x.rule}\0${x.file}\0${x.line}`; if (!uniq.has(k)) uniq.set(k, x); }
+    // Python sorts str paths by code point; mimic that (not localeCompare)
+    const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+    const sorted = [...uniq.values()].sort((a, b) =>
+      SEV_ORDER[b.severity] - SEV_ORDER[a.severity] || cmp(a.file, b.file) || a.line - b.line);
+    return { filesScanned: files.length, findings: sorted };
+  }
+
+  const api = { scan, shouldScan, isPlaceholder, mask, RULES, SEV_ORDER, version: "0.1.0" };
+  if (typeof module !== "undefined" && module.exports) module.exports = api;
+  root.preflash = api;
+})(typeof globalThis !== "undefined" ? globalThis : this);
+
+</script>
+<script>
+(function () {
+  "use strict";
+  const pf = window.preflash;
+  const $ = (id) => document.getElementById(id);
+  const code = $("code"), list = $("list"), summary = $("summary"), verdict = $("verdict");
+  const SEVS = ["critical", "high", "medium", "low"];
+  const shown = { critical: true, high: true, medium: true, low: true };
+  let mode = "paste";          // "paste" | "files"
+  let fileSet = [];            // [{path, text}] when files were opened
+  let last = { findings: [], filesScanned: 0 };
+
+  const EXAMPLE = `// Smart greenhouse controller (ESP32) - example with common mistakes
+#include <WiFi.h>
+#include <WebServer.h>
+#include <PubSubClient.h>
+#include <ArduinoOTA.h>
+
+#define BLYNK_AUTH_TOKEN "Xk3vQ9pLm2RtY7wZbN4cF8dH1jS6gA0e"
+
+const char* ssid = "VirginMedia4521";
+const char* password = "greenhouse2024!";
+
+const char* mqtt_server = "broker.hivemq.com";
+const int mqtt_port = 1883;
+const char* mqtt_pass = "Turmeric@123";
+
+WebServer server(80);
+WiFiClient espClient;
+PubSubClient client(espClient);
+
+void handleRelay() {
+  digitalWrite(5, server.arg("state") == "on" ? HIGH : LOW);
+  server.send(200, "text/plain", "OK");
+}
+
+void setup() {
+  Serial.begin(115200);
+  WiFi.begin(ssid, password);
+  Serial.println(password);
+
+  WiFi.softAP("Greenhouse-Setup", "12345678");
+  ArduinoOTA.begin();
+
+  server.on("/relay", handleRelay);
+  server.begin();
+
+  client.setServer(mqtt_server, mqtt_port);
+  client.connect("esp32", "farmuser", mqtt_pass);
+
+  WiFiClientSecure secure;
+  secure.setInsecure();
+}
+
+void loop() {
+  server.handleClient();
+  ArduinoOTA.handle();
+}
+`;
+
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const md = (s) => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>");
+
+  function toast(msg) {
+    const t = $("toast"); t.textContent = msg; t.classList.add("on");
+    clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove("on"), 1800);
+  }
+
+  function inputs() {
+    if (mode === "files") return { items: fileSet, force: false };
+    // pasted text: guess a name so platformio.ini / sdkconfig content is treated as config
+    const t = code.value;
+    let name = "sketch.ino";
+    if (/^\s*\[env(:|\])/m.test(t) && !/[;{}]\s*$/m.test(t)) name = "platformio.ini";
+    else if (/^CONFIG_[A-Z0-9_]+=/m.test(t) && !/#include/.test(t)) name = "sdkconfig";
+    return { items: [{ path: name, text: t }], force: true };
+  }
+
+  function run() {
+    const { items, force } = inputs();
+    const t0 = performance.now();
+    last = pf.scan(items, { force });
+    const ms = Math.max(1, Math.round(performance.now() - t0));
+    $("scan-meta").textContent = `${last.filesScanned} file${last.filesScanned === 1 ? "" : "s"} · ${ms} ms`;
+    render();
+  }
+
+  function render() {
+    const f = last.findings;
+    const counts = Object.fromEntries(SEVS.map((s) => [s, f.filter((x) => x.severity === s).length]));
+    const serious = counts.critical + counts.high;
+
+    if (!last.filesScanned) {
+      verdict.className = "verdict";
+      verdict.innerHTML = `<div class="big">–</div><p>Paste code or open files to start. Nothing to scan yet.</p>`;
+    } else if (!f.length) {
+      verdict.className = "verdict clean";
+      verdict.innerHTML = `<div class="big">0</div><p>No issues found. Good work. preflash can't catch everything, so still keep secrets out of public repos.</p>`;
+    } else {
+      verdict.className = "verdict";
+      verdict.innerHTML = `<div class="big ${serious ? "sev-high" : "sev-medium"}">${f.length}</div><p>${f.length} issue${f.length === 1 ? "" : "s"} found${serious ? `, ${serious} serious enough to fix before you flash or push this code` : ""}.</p>`;
+    }
+
+    summary.innerHTML = SEVS.map((s) => `<button type="button" class="chip sev-${s}" data-sev="${s}" aria-pressed="${shown[s]}"><span class="led"></span><span style="color:var(--ink)">${counts[s]} ${s}</span></button>`).join("");
+    summary.style.display = f.length ? "" : "none";
+
+    const vis = f.filter((x) => shown[x.severity]);
+    if (!f.length) { list.innerHTML = last.filesScanned ? `<div class="empty">Nothing to report.</div>` : ""; return; }
+    if (!vis.length) { list.innerHTML = `<div class="empty">All findings are hidden by the filters above.</div>`; return; }
+    list.innerHTML = vis.map((x) => `
+      <article class="finding sev-${x.severity}">
+        <div class="stripe"></div>
+        <div class="fbody">
+          <div class="ftop"><span class="sev">${x.severity}</span><span class="ftitle" style="color:var(--ink)">${esc(x.title)}</span><span class="rid">${x.rule}</span></div>
+          <div class="loc">${esc(x.file)}:${x.line}</div>
+          ${x.snippet ? `<pre class="snip">${esc(x.snippet)}</pre>` : ""}
+          <p class="msg" style="color:var(--ink)">${md(x.message)}</p>
+          <p class="fix"><b>Fix:</b> ${md(x.fix)}</p>
+        </div>
+      </article>`).join("");
+  }
+
+  summary.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-sev]"); if (!b) return;
+    shown[b.dataset.sev] = !shown[b.dataset.sev]; render();
+  });
+
+  // ---- input handling
+  let timer;
+  code.addEventListener("input", () => {
+    if (mode === "files") setPasteMode("pasted code");
+    clearTimeout(timer); timer = setTimeout(run, 150);
+  });
+
+  function setPasteMode(label) {
+    mode = "paste"; fileSet = [];
+    $("files").className = "files"; $("files").innerHTML = "";
+    code.readOnly = false;
+    $("src-label").textContent = label;
+  }
+
+  function showFiles(all) {
+    const scanned = all.filter((f) => pf.shouldScan(f.path));
+    fileSet = scanned; mode = "files";
+    const skipped = all.length - scanned.length;
+    const el = $("files"); el.className = "files on";
+    el.innerHTML = `${scanned.length} file${scanned.length === 1 ? "" : "s"} loaded${skipped ? ` · ${skipped} other file${skipped === 1 ? "" : "s"} skipped (libraries, build output, non-code)` : ""}<ul>${scanned.slice(0, 40).map((f) => `<li>${esc(f.path)}</li>`).join("")}${scanned.length > 40 ? `<li>+${scanned.length - 40} more</li>` : ""}</ul>`;
+    const first = scanned.find((f) => /\.(ino|cpp|c)$/i.test(f.path)) || scanned[0];
+    code.value = first ? `// Showing ${first.path} (${scanned.length} file(s) scanned). Edit to switch back to paste mode.\n\n${first.text}` : "";
+    $("src-label").textContent = scanned.length ? `${scanned.length} file${scanned.length === 1 ? "" : "s"}` : "no code files found";
+    if (!scanned.length) toast("No .ino, .cpp, .h or platformio.ini files found there");
+    run();
+  }
+
+  const readText = (file) => new Promise((res) => {
+    if (file.size > 2000000) return res(null);
+    const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => res(null); r.readAsText(file);
+  });
+
+  async function fromFileList(fileList) {
+    const items = [];
+    for (const f of fileList) {
+      const rel = (f.webkitRelativePath || f.name).split("/");
+      if (f.webkitRelativePath && rel.length > 1) rel.shift();   // drop the top folder name
+      const p = rel.join("/");
+      if (!pf.shouldScan(p)) { items.push({ path: p, text: "" }); continue; }
+      const t = await readText(f); if (t !== null) items.push({ path: p, text: t });
+    }
+    showFiles(items);
+  }
+
+  // drag and drop, including whole folders
+  async function walkEntry(entry, prefix, out) {
+    if (entry.isFile) {
+      const file = await new Promise((res, rej) => entry.file(res, rej)).catch(() => null);
+      if (!file) return;
+      const p = prefix + file.name;
+      if (!pf.shouldScan(p)) { out.push({ path: p, text: "" }); return; }
+      const t = await readText(file); if (t !== null) out.push({ path: p, text: t });
+    } else if (entry.isDirectory) {
+      const reader = entry.createReader();
+      let batch;
+      do {
+        batch = await new Promise((res) => reader.readEntries(res, () => res([])));
+        for (const e of batch) await walkEntry(e, prefix + entry.name + "/", out);
+      } while (batch.length);
+    }
+  }
+
+  const editor = $("editor");
+  ["dragenter", "dragover"].forEach((ev) => editor.addEventListener(ev, (e) => { e.preventDefault(); editor.classList.add("dragging"); }));
+  ["dragleave", "drop"].forEach((ev) => editor.addEventListener(ev, (e) => { if (ev === "dragleave" && editor.contains(e.relatedTarget)) return; editor.classList.remove("dragging"); }));
+  editor.addEventListener("drop", async (e) => {
+    e.preventDefault();
+    const dt = e.dataTransfer;
+    const entries = [...(dt.items || [])].map((i) => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+    if (entries.length) {
+      const out = [];
+      // a single dropped folder: paths relative to inside it
+      if (entries.length === 1 && entries[0].isDirectory) {
+        const reader = entries[0].createReader(); let batch;
+        do { batch = await new Promise((res) => reader.readEntries(res, () => res([]))); for (const en of batch) await walkEntry(en, "", out); } while (batch.length);
+      } else for (const en of entries) await walkEntry(en, "", out);
+      showFiles(out);
+    } else if (dt.files && dt.files.length) fromFileList([...dt.files]);
+  });
+
+  $("btn-files").onclick = () => $("pick-files").click();
+  $("btn-folder").onclick = () => $("pick-folder").click();
+  // copy the FileList first: it is live and empties when the input is reset
+  $("pick-files").onchange = (e) => { const fl = [...e.target.files]; e.target.value = ""; fromFileList(fl); };
+  $("pick-folder").onchange = (e) => { const fl = [...e.target.files]; e.target.value = ""; fromFileList(fl); };
+  $("btn-example").onclick = () => { code.value = EXAMPLE; setPasteMode("example sketch"); run(); };
+  $("btn-clear").onclick = () => { code.value = ""; setPasteMode("pasted code"); run(); code.focus(); };
+
+  async function copy(text, msg) {
+    try { await navigator.clipboard.writeText(text); toast(msg); }
+    catch { toast("Copy was blocked by the browser. Select the text and copy it instead."); }
+  }
+  $("btn-copy").onclick = () => {
+    const f = last.findings;
+    if (!f.length) return copy("preflash: no issues found.", "Report copied");
+    const lines = [`preflash report: ${f.length} issue(s) in ${last.filesScanned} file(s)`, ""];
+    for (const x of f) lines.push(`- [${x.severity.toUpperCase()}] ${x.rule} ${x.title}: ${x.file}:${x.line}`, `  ${x.message}`, `  Fix: ${x.fix}`);
+    copy(lines.join("\n"), "Report copied (secrets stay masked)");
+  };
+  document.querySelectorAll("[data-copy]").forEach((b) => b.onclick = () => copy($(b.dataset.copy).textContent, "Copied"));
+
+  // rules table
+  $("rules-table").querySelector("tbody").innerHTML = Object.values(pf.RULES).map((r) =>
+    `<tr><td>${r.id}</td><td><span class="sev sev-${r.severity}">${r.severity}</span></td><td><b>${esc(r.title)}</b><br><span style="color:var(--muted)">${esc(r.fix)}</span></td></tr>`).join("");
+
+  // open in a working state
+  code.value = EXAMPLE; run();
+})();
+</script>
+</body>
+</html>
