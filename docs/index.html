@@ -46,10 +46,10 @@ header b { font: 700 15px var(--mono); }
 header .ver { color: var(--muted); font: 13px var(--mono); }
 header nav { margin-left: auto; display: flex; gap: 18px; }
 
-.intro { max-width: 62ch; padding: 36px 0 26px; }
+.intro { max-width: 62ch; padding: 40px 0 28px; }
 .intro h1 { font-size: 26px; line-height: 1.25; margin: 0 0 12px; font-weight: 700; letter-spacing: -.01em; }
 .intro p { margin: 0 0 10px; }
-.intro .note { color: var(--muted); font-size: 14px; }
+.intro .note { color: var(--muted); font-size: 15px; margin: 0; }
 
 .bench { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: stretch; }
 @media (max-width: 880px) { .bench { grid-template-columns: minmax(0, 1fr); } }
@@ -79,7 +79,12 @@ textarea#code:focus { outline: none; border-color: var(--accent); }
 .mon-body { flex: 1; overflow: auto; padding: 12px 14px 18px; }
 #verdict { margin: 0 0 12px; }
 #verdict .dim, .dim { color: var(--mon-dim); }
-.finding { margin: 0 0 16px; }
+.finding { margin: 0 0 10px; }
+.finding summary { cursor: pointer; list-style: none; }
+.finding summary::-webkit-details-marker { display: none; }
+.finding summary::before { content: "+ "; color: var(--mon-dim); }
+.finding[open] summary::before { content: "- "; }
+.finding .more { margin: 2px 0 6px; }
 .tag { font-weight: 700; }
 .t-critical { color: var(--crit); } .t-high { color: var(--high); } .t-medium { color: var(--med); } .t-low { color: var(--low); } .t-ok { color: var(--ok); }
 .finding .where { color: var(--mon-dim); }
@@ -91,13 +96,18 @@ textarea#code:focus { outline: none; border-color: var(--accent); }
 @media (prefers-reduced-motion: reduce) { .cursor { animation: none; } }
 
 /* below */
-.prose { max-width: 62ch; padding: 48px 0 0; }
+.prose { max-width: 62ch; padding: 40px 0 0; }
+.prose .row { display: flex; gap: 14px; align-items: baseline; flex-wrap: wrap; font-size: 14px; }
+.dim2 { color: var(--muted); }
+details.all { margin-top: 18px; font-size: 14px; }
+details.all summary { cursor: pointer; color: var(--accent); }
+details.all .checks { margin-top: 8px; }
 .prose h2 { font-size: 18px; margin: 32px 0 8px; }
 .prose h2:first-child { margin-top: 0; }
 .prose p { margin: 0 0 12px; }
 .prose pre { background: var(--field); border: 1px solid var(--rule); border-radius: 2px; padding: 10px 12px; font-size: 13px; overflow-x: auto; margin: 0 0 12px; }
 .checks { font: 13px/1.75 var(--mono); overflow-x: auto; white-space: pre; margin: 0; padding: 0; border: 0; background: none; }
-footer { margin-top: 48px; padding: 18px 0 36px; border-top: 1px solid var(--rule); color: var(--muted); font-size: 13px; }
+footer { margin-top: 40px; padding: 18px 0 36px; border-top: 1px solid var(--rule); color: var(--muted); font-size: 13px; }
 .toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 6px 12px; font: 13px var(--mono); opacity: 0; pointer-events: none; }
 .toast.on { opacity: 1; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
@@ -112,8 +122,7 @@ footer { margin-top: 48px; padding: 18px 0 36px; border-top: 1px solid var(--rul
 
   <section class="intro">
     <h1>Scan your ESP32 / Arduino sketch before you flash it.</h1>
-    <p>I scanned 249 public ESP32 and ESP8266 projects on GitHub. About 1 in 5 had a home Wi-Fi password sitting in the code, plus Blynk and Telegram tokens, open OTA updates and <code>setInsecure()</code> everywhere. The usual secret scanners missed nearly all the Wi-Fi passwords, so I wrote this.</p>
-    <p class="note">Paste your code or drop your project folder in. It all runs in this tab. Nothing gets sent anywhere.</p>
+    <p class="note">Finds leaked Wi-Fi passwords, tokens and open OTA. Runs in this tab, nothing is uploaded.</p>
   </section>
 
   <main class="bench">
@@ -150,20 +159,13 @@ footer { margin-top: 48px; padding: 18px 0 36px; border-top: 1px solid var(--rul
   </main>
 
   <section class="prose">
-    <h2>Found something?</h2>
-    <p>If the code was ever pushed to GitHub, change that password or rotate the token. Deleting the line doesn't remove it from git history. Then move secrets into an <code>arduino_secrets.h</code> and add it to <code>.gitignore</code>.</p>
-
-    <h2>Run it locally</h2>
-    <p>Same checks, from the terminal. No account, no dependencies.</p>
     <pre id="cmd1">pip install git+https://github.com/lazycoder2020-ui/preflash
 preflash path/to/your/project</pre>
-    <p><button type="button" class="link" data-copy="cmd1">copy commands</button> · there's also a GitHub Action and a pre-commit hook in the <a href="https://github.com/lazycoder2020-ui/preflash#readme">README</a>.</p>
-
-    <h2>What it checks</h2>
-    <pre class="checks" id="rules-table"></pre>
+    <p class="row"><button type="button" class="link" data-copy="cmd1">copy</button><span class="dim2">run it locally · <a href="https://github.com/lazycoder2020-ui/preflash#readme">GitHub Action &amp; pre-commit</a></span></p>
+    <details class="all"><summary>all 15 checks</summary><pre class="checks" id="rules-table"></pre></details>
   </section>
 
-  <footer>MIT licensed. It's pattern matching, so it'll miss clever code and sometimes flag test files. Read the results, don't just trust them. Bugs and new rules welcome on <a href="https://github.com/lazycoder2020-ui/preflash/issues">GitHub</a>.</footer>
+  <footer>MIT · pattern-based, so review the results · <a href="https://github.com/lazycoder2020-ui/preflash/issues">report a bug</a></footer>
 </div>
 <div class="toast" id="toast" role="status"></div>
 
@@ -682,12 +684,14 @@ void loop() {
     const vis = f.filter((x) => shown[x.severity]);
     if (!vis.length) { list.innerHTML = `<span class="dim">(all hidden by the filter above)</span><br>${caret}`; return; }
     list.innerHTML = vis.map((x) => `
-      <div class="finding">
-        <div><span class="tag t-${x.severity}">[${x.severity.toUpperCase()}]</span> ${esc(x.title)} <span class="where">${esc(x.file)}:${x.line}</span></div>
-        ${x.snippet ? `<pre>${esc(x.snippet)}</pre>` : ""}
-        <div class="ln">${md(x.message)}</div>
-        <div class="ln dim">fix: ${md(x.fix)}</div>
-      </div>`).join("") + caret;
+      <details class="finding">
+        <summary><span class="tag t-${x.severity}">[${x.severity.toUpperCase()}]</span> ${esc(x.title)} <span class="where">${esc(x.file)}:${x.line}</span></summary>
+        <div class="more">
+          ${x.snippet ? `<pre>${esc(x.snippet)}</pre>` : ""}
+          <div class="ln">${md(x.message)}</div>
+          <div class="ln dim">fix: ${md(x.fix)}</div>
+        </div>
+      </details>`).join("") + `<span class="dim">click a line for details</span><br>` + caret;
   }("click", (e) => {
     const b = e.target.closest("[data-sev]"); if (!b) return;
     shown[b.dataset.sev] = !shown[b.dataset.sev]; render();
